@@ -1,0 +1,233 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer or lead in the CRM",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the customer" },
+        "company": { "type": "string", "description": "Company name" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "status": { "type": "string", "enum": ["Active", "Lead", "Inactive"], "description": "Current status" },
+        "lastContact": { "type": "string", "description": "ISO date string of last contact" },
+        "ownerId": { "type": "string", "description": "UID of the user who owns this record" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "status", "ownerId"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "A billing invoice",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Paid", "Pending", "Overdue"] },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["invoiceNumber", "customerId", "amount", "status", "ownerId"]
+    },
+    "Quote": {
+      "title": "Quote",
+      "description": "A price estimate",
+      "type": "object",
+      "properties": {
+        "quoteNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "expiry": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Accepted", "Pending", "Expired"] },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["quoteNumber", "customerId", "amount", "status", "ownerId"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product or service",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "string" },
+        "status": { "type": "string", "enum": ["Available", "Out of Stock"] },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "price", "status", "ownerId"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment transaction",
+      "type": "object",
+      "properties": {
+        "invoiceId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Completed", "Processing", "Failed"] },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["invoiceId", "amount", "status", "ownerId"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "user"] },
+        "organizationId": { "type": "string", "description": "ID of the organization the user belongs to" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "A team or company account",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "tier": { "type": "string", "enum": ["free", "pro", "enterprise"] },
+        "memberLimit": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "tier"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "An invitation to join an organization",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "invitedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "organizationId", "role", "status"]
+    },
+    "GlobalConfig": {
+      "title": "Global Config",
+      "description": "Platform-wide settings managed by super admins",
+      "type": "object",
+      "properties": {
+        "tiers": {
+          "type": "object",
+          "properties": {
+            "free": {
+              "type": "object",
+              "properties": {
+                "price": { "type": "number" },
+                "memberLimit": { "type": "number" },
+                "features": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "pro": {
+              "type": "object",
+              "properties": {
+                "price": { "type": "number" },
+                "memberLimit": { "type": "number" },
+                "features": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Outreach": {
+      "title": "Outreach",
+      "description": "An outreach communication record",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "platform": { "type": "string", "enum": ["Email", "WhatsApp"] },
+        "message": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string", "enum": ["Sent", "Failed"] },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "platform", "message", "status", "ownerId"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "User application settings",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "website": { "type": "string" },
+        "geminiApiKey": { "type": "string" },
+        "smtpHost": { "type": "string" },
+        "smtpPort": { "type": "string" },
+        "smtpUser": { "type": "string" },
+        "smtpPass": { "type": "string" },
+        "vatRegion": { "type": "string", "enum": ["NO", "SE", "DK", "INT"] },
+        "tier": { "type": "string", "enum": ["free", "pro"] },
+        "aiModel": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/global_config/main": {
+      "schema": "GlobalConfig",
+      "description": "Platform-wide configuration"
+    },
+    "/organizations/{orgId}": {
+      "schema": "Organization",
+      "description": "Organization accounts"
+    },
+    "/invitations/{invId}": {
+      "schema": "Invitation",
+      "description": "Team invitations"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/settings/{userId}": {
+      "schema": "Settings",
+      "description": "User settings"
+    },
+    "/outreach/{outreachId}": {
+      "schema": "Outreach",
+      "description": "Outreach records"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer records"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoice records"
+    },
+    "/quotes/{quoteId}": {
+      "schema": "Quote",
+      "description": "Quote records"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Product records"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payment records"
+    }
+  }
+}
