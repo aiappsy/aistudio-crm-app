@@ -184,7 +184,7 @@ export default function Landing() {
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                       <Sparkles className="h-6 w-6 text-primary" />
                     </div>
-                    <span className="text-sm font-bold">AI Insight</span>
+                    <span className="text-sm font-bold">{t("ai_insight") || "AI Insight"}</span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     "Customer John Doe is 85% likely to churn. Send a loyalty discount now."
@@ -198,10 +198,10 @@ export default function Landing() {
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Live Activity</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">{t("live_activity") || "Live Activity"}</span>
                   </div>
-                  <p className="text-sm font-medium">Quote #124 Accepted</p>
-                  <p className="text-[10px] text-muted-foreground">by Nordic Solutions AS</p>
+                  <p className="text-sm font-medium">{t("quote_accepted_example") || "Quote #124 Accepted"}</p>
+                  <p className="text-[10px] text-muted-foreground">{t("by_nordic_solutions_example") || "by Nordic Solutions AS"}</p>
                 </motion.div>
               </motion.div>
             </div>
@@ -266,7 +266,7 @@ export default function Landing() {
               >
                 <Card className="flex flex-col rounded-[2rem] border-border/50 overflow-hidden h-full">
                   <CardContent className="pt-10 flex-1 px-8">
-                    <h3 className="text-2xl font-bold mb-2">Free</h3>
+                    <h3 className="text-2xl font-bold mb-2">{t("free_plan") || "Free"}</h3>
                     <p className="text-sm text-muted-foreground mb-8">{t("free_description") || "Perfect for solo founders."}</p>
                     <div className="mb-8">
                       <span className="text-5xl font-bold">$0</span>
@@ -302,12 +302,12 @@ export default function Landing() {
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 1.5, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
               >
-                <Card className="flex flex-col rounded-[2rem] border-primary shadow-2xl relative overflow-hidden scale-105 z-10 h-full">
+                <Card className="flex flex-col rounded-[2rem] border-primary shadow-2xl relative overflow-hidden md:scale-105 z-10 h-full">
                   <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] font-bold uppercase px-4 py-1.5 rounded-bl-xl tracking-widest">
                     Most Popular
                   </div>
                   <CardContent className="pt-10 flex-1 px-8">
-                    <h3 className="text-2xl font-bold mb-2">Pro</h3>
+                    <h3 className="text-2xl font-bold mb-2">{t("pro_plan") || "Pro"}</h3>
                     <p className="text-sm text-muted-foreground mb-8 text-primary/80">{t("pro_description") || "For growing teams."}</p>
                     <div className="mb-8">
                       <span className="text-5xl font-bold">$19</span>
@@ -351,7 +351,7 @@ export default function Landing() {
               >
                 <Card className="flex flex-col rounded-[2rem] border-border/50 overflow-hidden h-full">
                   <CardContent className="pt-10 flex-1 px-8">
-                    <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
+                    <h3 className="text-2xl font-bold mb-2">{t("enterprise_plan") || "Enterprise"}</h3>
                     <p className="text-sm text-muted-foreground mb-8">{t("enterprise_description") || "For large organizations."}</p>
                     <div className="mb-8">
                       <span className="text-5xl font-bold">$49</span>
@@ -412,11 +412,11 @@ export default function Landing() {
                 <div className="grid grid-cols-2 gap-8">
                   <div>
                     <p className="text-4xl font-bold mb-1">98%</p>
-                    <p className="text-sm opacity-60 uppercase tracking-widest">Customer Satisfaction</p>
+                    <p className="text-sm opacity-60 uppercase tracking-widest">{t("customer_satisfaction") || "Customer Satisfaction"}</p>
                   </div>
                   <div>
                     <p className="text-4xl font-bold mb-1">10k+</p>
-                    <p className="text-sm opacity-60 uppercase tracking-widest">Invoices Processed</p>
+                    <p className="text-sm opacity-60 uppercase tracking-widest">{t("invoices_processed") || "Invoices Processed"}</p>
                   </div>
                 </div>
               </motion.div>
@@ -450,9 +450,9 @@ export default function Landing() {
                 <span className="text-lg font-bold">Aiappsy CRM</span>
               </div>
               <div className="flex gap-8 text-sm text-muted-foreground">
-                <Link to="/privacy" className="hover:text-primary">Privacy Policy</Link>
-                <Link to="/terms" className="hover:text-primary">Terms of Service</Link>
-                <a href="mailto:support@aiappsy.com" className="hover:text-primary">Contact</a>
+                <Link to="/privacy" className="hover:text-primary">{t("privacy_policy") || "Privacy Policy"}</Link>
+                <Link to="/terms" className="hover:text-primary">{t("terms_of_service") || "Terms of Service"}</Link>
+                <a href="mailto:support@aiappsy.com" className="hover:text-primary">{t("contact") || "Contact"}</a>
               </div>
               <p className="text-sm text-muted-foreground">
                 © 2026 Aiappsy CRM. All rights reserved.

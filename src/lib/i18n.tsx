@@ -10,17 +10,17 @@ interface Translations {
 
 const translations: Translations = {
   // Sidebar
-  dashboard: { en: "Dashboard", no: "Oversikt", sv: "Instrumentpanel", da: "Oversigt" },
+  dashboard: { en: "Dashboard", no: "Oversikt", sv: "Översikt", da: "Kontrolpanel" },
   contacts: { en: "Contacts", no: "Kontakter", sv: "Kontakter", da: "Kontakter" },
   customers: { en: "Customers", no: "Kunder", sv: "Kunder", da: "Kunder" },
   suppliers: { en: "Suppliers", no: "Leverandører", sv: "Leverantörer", da: "Leverandører" },
   custom_types: { en: "Custom Types", no: "Egendefinerte typer", sv: "Anpassade typer", da: "Brugerdefinerede typer" },
-  pipeline: { en: "Pipeline", no: "Salgsprosess", sv: "Pipeline", da: "Pipeline" },
+  pipeline: { en: "Pipeline", no: "Salgstrakt", sv: "Säljpipeline", da: "Salgspipeline" },
   quotes: { en: "Quotes", no: "Tilbud", sv: "Offerter", da: "Tilbud" },
   invoices: { en: "Invoices", no: "Fakturaer", sv: "Fakturor", da: "Fakturaer" },
   products: { en: "Products", no: "Produkter", sv: "Produkter", da: "Produkter" },
   payments: { en: "Payments", no: "Betalinger", sv: "Betalningar", da: "Betalinger" },
-  outreach: { en: "Outreach", no: "Oppfølging", sv: "Uppsökande", da: "Opsøgende" },
+  outreach: { en: "Outreach", no: "Utsendelser", sv: "Utskick", da: "Udsendelser" },
   reports: { en: "Reports", no: "Rapporter", sv: "Rapporter", da: "Rapporter" },
   settings: { en: "Settings", no: "Innstillinger", sv: "Inställningar", da: "Indstillinger" },
   
@@ -95,9 +95,9 @@ const translations: Translations = {
   ai_draft: { en: "AI Draft", no: "AI-utkast", sv: "AI-utkast", da: "AI-udkast" },
   welcome_message: { 
     en: "Hello! I'm your Aiappsy CRM assistant. I can help you manage customers, create invoices, and even send outreach messages. How can I help you today?", 
-    no: "Hei! Jeg er din Aiappsy CRM-assistent. Jeg kan hjelpe deg med å administrere kunder, opprette fakturaer og sende oppfølgingsmeldinger. Hvordan kan jeg hjelpe deg i dag?", 
-    sv: "Hej! Jag är din Aiappsy CRM-assistent. Jag kan hjälpa dig att hantera kunder, skapa fakturor och skicka uppsökande meddelanden. Hur kan jag hjälpa dig idag?", 
-    da: "Hej! Jeg er din Aiappsy CRM-assistent. Jeg kan hjælpe dig med at administrere kunder, oprette fakturaer og sende opsøgende beskeder. Hvordan kan jeg hjælpe dig i dag?" 
+    no: "Hei! Jeg er din assistent i Aiappsy CRM. Jeg kan hjelpe deg med å håndtere kunder, opprette fakturaer og sende kampanjer. Hva kan jeg hjelpe deg med i dag?", 
+    sv: "Hej! Jag är din assistent i Aiappsy CRM. Jag kan hjälpa dig att hantera kunder, skapa fakturor och skicka utskick. Vad kan jag hjälpa dig med idag?", 
+    da: "Hej! Jeg er din assistent i Aiappsy CRM. Jeg kan hjælpe dig med at håndtere kunder, oprette fakturaer og udsende kampagner. Hvad kan jeg hjælpe dig med i dag?" 
   },
   thinking: { en: "Thinking...", no: "Tenker...", sv: "Tänker...", da: "Tænker..." },
   
@@ -317,23 +317,36 @@ const translations: Translations = {
   about: { en: "About", no: "Om oss", sv: "Om oss", da: "Om os" },
   go_to_dashboard: { en: "Go to Dashboard", no: "Gå til oversikt", sv: "Gå till instrumentpanel", da: "Gå til oversigt" },
   get_started: { en: "Get Started", no: "Kom i gang", sv: "Kom igång", da: "Kom i gang" },
-  hero_title_1: { en: "Close more", no: "Vinn flere", sv: "Landa fler", da: "Vind flere" },
+  hero_title_1: { en: "Close more", no: "Vinn flere", sv: "Stäng fler", da: "Land flere" },
   hero_title_2: { en: "Deals", no: "avtaler", sv: "affärer", da: "aftaler" },
   hero_title_3: { en: "with AI.", no: "med AI.", sv: "med AI.", da: "med AI." },
   hero_subtitle: { 
     en: "Aiappsy is the first CRM that doesn't just store data—it acts on it. Automate your outreach, research competitors, and generate professional quotes in seconds.",
-    no: "Aiappsy er det første CRM-systemet som ikke bare lagrer data – det handler på dem. Automatiser oppfølging, undersøk konkurrenter og generer profesjonelle tilbud på sekunder.",
-    sv: "Aiappsy är det första CRM-systemet som inte bara lagrar data – det agerar på den. Automatisera din uppsökande verksamhet, undersök konkurrenter och generera professionella offerter på sekunder.",
-    da: "Aiappsy er det første CRM-system, der ikke bare gemmer data – det handler på dem. Automatiser din opsøgende indsats, undersøg konkurrenter og generer professionelle tilbud på sekunder."
+    no: "Aiappsy er det første CRM-systemet som ikke bare lagrer data – det tar grep. Automatiser salgsoppfølging, analyser konkurrenter og opprett profesjonelle tilbud på få sekunder.",
+    sv: "Aiappsy är det första CRM-systemet som inte bara lagrar data – det agerar åt dig. Automatisera din kunduppföljning, analysera konkurrenter och skapa professionella offerter på sekunder.",
+    da: "Aiappsy er det første CRM-system, der ikke kun gemmer data – det arbejder for dig. Automatiser din kundekontakt, analyser konkurrenter, og opret professionelle tilbud på sekunder."
   },
   start_for_free: { en: "Start for Free", no: "Start gratis", sv: "Starta gratis", da: "Start gratis" },
-  features_title: { en: "Built for the next generation of sales", no: "Bygget for neste generasjon salg", sv: "Byggd för nästa generations försäljning", da: "Bygget til næste generation af salg" },
-  features_subtitle: { en: "Stop fighting your CRM and start closing deals. Aiappsy handles the busy work so you can focus on relationships.", no: "Slutt å kjempe mot CRM-et ditt og begynn å lukke avtaler. Aiappsy håndterer det travle arbeidet slik at du kan fokusere på relasjoner.", sv: "Sluta kämpa mot ditt CRM och börja stänga affärer. Aiappsy hanterar det upptagna arbetet så att du kan fokusera på relationer.", da: "Stop med at kæmpe mod dit CRM og begynd at lukke aftaler. Aiappsy håndterer det travle arbejde, så du kan fokusere på relationer." },
-  pricing_title: { en: "Simple, transparent pricing", no: "Enkle, transparente priser", sv: "Enkla, transparenta priser", da: "Enkle, gennemsigtige priser" },
-  pricing_subtitle: { en: "Scale your business without the hidden fees.", no: "Skaler virksomheten din uten skjulte avgifter.", sv: "Skala din verksamhet utan dolda avgifter.", da: "Skaler din virksomhed uden skjulte gebyrer." },
-  about_title_1: { en: "We're on a mission to", no: "Vi har et oppdrag om å", sv: "Vi har ett uppdrag att", da: "Vi har en mission om at" },
+  features_title: { en: "Built for the next generation of sales", no: "Bygget for neste generasjon salg", sv: "Byggt för nästa generations försäljning", da: "Bygget til næste generation af salg" },
+  features_subtitle: { en: "Stop fighting your CRM and start closing deals. Aiappsy handles the busy work so you can focus on relationships.", no: "Slutt å kjempe mot CRM-systemet ditt, og begynn å lande avtaler. Aiappsy tar seg av rutinearbeidet, så du kan fokusere på relasjonene.", sv: "Sluta kämpa med ditt CRM och börja stänga affärer. Aiappsy hanterar rutinarbetet så att du kan fokusera på relationerna.", da: "Stop med at kæmpe med dit CRM og begynd at lukke aftaler. Aiappsy håndterer rutinearbejdet, så du kan fokusere på relationerne." },
+  pricing_title: { en: "Simple, transparent pricing", no: "Enkle, oversiktlige priser", sv: "Enkla, tydliga priser", da: "Enkle, gennemsigtige priser" },
+  pricing_subtitle: { en: "Scale your business without the hidden fees.", no: "Skaler virksomheten din uten skjulte kostnader.", sv: "Skala upp din verksamhet utan dolda avgifter.", da: "Skaler din virksomhed uden skjulte gebyrer." },
+  about_title_1: { en: "We're on a mission to", no: "Vårt oppdrag er å", sv: "Vårt uppdrag är att", da: "Vores mission er at" },
   about_title_2: { en: "humanize", no: "menneskeliggjøre", sv: "förmänskliga", da: "menneskeliggøre" },
-  about_title_3: { en: "business.", no: "virksomhet.", sv: "affärer.", da: "forretning." },
+  about_title_3: { en: "business.", no: "virkeligheten.", sv: "företagandet.", da: "forretningslivet." },
+  
+  // Landing Page missing words
+  privacy_policy: { en: "Privacy Policy", no: "Personvernerklæring", sv: "Integritetspolicy", da: "Privatlivspolitik" },
+  terms_of_service: { en: "Terms of Service", no: "Brukervilkår", sv: "Användarvillkor", da: "Brugervilkår" },
+  customer_satisfaction: { en: "Customer Satisfaction", no: "Kundetilfredshet", sv: "Kundnöjdhet", da: "Kundetilfredshed" },
+  invoices_processed: { en: "Invoices Processed", no: "Behandlede fakturaer", sv: "Behandlade fakturor", da: "Behandlede fakturaer" },
+  live_activity: { en: "Live Activity", no: "Siste aktivitet", sv: "Senaste aktivitet", da: "Seneste aktivitet" },
+  ai_insight: { en: "AI Insight", no: "AI-innsikt", sv: "AI-insikt", da: "AI-indsigt" },
+  quote_accepted_example: { en: "Quote #124 Accepted", no: "Tilbud #124 Akseptert", sv: "Offert #124 Accepterad", da: "Tilbud #124 Accepteret" },
+  by_nordic_solutions_example: { en: "by Nordic Solutions AS", no: "av Nordic Solutions AS", sv: "av Nordic Solutions AS", da: "af Nordic Solutions AS" },
+  free_plan: { en: "Free", no: "Gratis", sv: "Gratis", da: "Gratis" },
+  pro_plan: { en: "Pro", no: "Pro", sv: "Pro", da: "Pro" },
+  enterprise_plan: { en: "Enterprise", no: "Enterprise", sv: "Enterprise", da: "Enterprise" },
 
   // VAT & Localization
   vat_region: { en: "VAT Region", no: "MVA-region", sv: "Momsregion", da: "Momsregion" },
@@ -352,13 +365,13 @@ const translations: Translations = {
   international: { en: "International (No VAT)", no: "Internasjonal (Fritatt)", sv: "Internationell (Momsfri)", da: "International (Momsfri)" },
   
   // Pipeline
-  visual_sales_pipeline: { en: "Visual sales pipeline. Drag and drop to update status.", no: "Visuell salgsprosess. Dra og slipp for å oppdatere status.", sv: "Visuell försäljningsprocess. Dra och släpp för att uppdatera status.", da: "Visuel salgsproces. Træk og slip for at opdatere status." },
-  new_deal: { en: "New Deal", no: "Ny avtale", sv: "Ny affär", da: "Ny aftale" },
-  add_new_deal: { en: "Add New Deal", no: "Legg til ny avtale", sv: "Lägg till ny affär", da: "Tilføj ny aftale" },
-  create_new_prospect: { en: "Create a new prospect for your pipeline.", no: "Opprett et nytt prospekt for salgsprosessen din.", sv: "Skapa ett nytt prospekt för din pipeline.", da: "Opret et nyt prospekt til din pipeline." },
+  visual_sales_pipeline: { en: "Visual sales pipeline. Drag and drop to update status.", no: "Visuell salgstrakt. Dra og slipp for å endre status.", sv: "Visuell säljpipeline. Dra och släpp för att ändra status.", da: "Visuel salgspipeline. Træk og slip for at ændre status." },
+  new_deal: { en: "New Deal", no: "Nytt prosjekt", sv: "Ny affär", da: "Ny aftale" },
+  add_new_deal: { en: "Add New Deal", no: "Legg til nytt prosjekt", sv: "Lägg till ny affär", da: "Tilføj ny aftale" },
+  create_new_prospect: { en: "Create a new prospect for your pipeline.", no: "Legg til et nytt prospekt i salgstrakten din.", sv: "Skapa ett nytt prospekt för din pipeline.", da: "Opret et nyt prospekt til din pipeline." },
   contact_name: { en: "Contact Name", no: "Kontaktnavn", sv: "Kontaktnamn", da: "Kontaktnavn" },
-  pipeline_stage: { en: "Pipeline Stage", no: "Fase i salgsprosess", sv: "Pipeline-fas", da: "Pipeline-fase" },
-  save_deal: { en: "Save Deal", no: "Lagre avtale", sv: "Spara affär", da: "Gem aftale" },
+  pipeline_stage: { en: "Pipeline Stage", no: "Steg i salgstrakt", sv: "Fas i pipeline", da: "Fase i pipeline" },
+  save_deal: { en: "Save Deal", no: "Lagre prosjekt", sv: "Spara affär", da: "Gem aftale" },
   
   // Admin & Integrations
   access_denied: { en: "Access Denied", no: "Ingen tilgang", sv: "Åtkomst nekad", da: "Adgang nægtet" },
@@ -398,10 +411,13 @@ const translations: Translations = {
   
   // Extra Landing text
   contact_sales: { en: "Contact Sales", no: "Kontakt salg", sv: "Kontakta sälj", da: "Kontakt salg" },
-  free_description: { en: "Perfect for solo founders.", no: "Perfekt for enslige gründere.", sv: "Perfekt för ensamgrundare.", da: "Perfekt for solostiftere." },
-  pro_description: { en: "For growing teams.", no: "For voksende team.", sv: "För växande team.", da: "Til voksende teams." },
-  enterprise_description: { en: "For large organizations.", no: "For store organisasjoner.", sv: "För stora organisationer.", da: "Til store organisationer." },
-  upgrade_now: { en: "Upgrade Now", no: "Oppgrader nå", sv: "Uppgradera nu", da: "Opgrader nu" }
+  // Landing Extra
+  free_description: { en: "Perfect for solo founders.", no: "Perfekt for gründere.", sv: "Perfekt för ensamgrundare.", da: "Perfekt til solostiftere." },
+  pro_description: { en: "For growing teams.", no: "For team i vekst.", sv: "För växande team.", da: "Til voksende teams." },
+  enterprise_description: { en: "For large organizations.", no: "For større selskaper.", sv: "För större företag.", da: "Til større virksomheder." },
+  upgrade_now: { en: "Upgrade Now", no: "Oppgrader nå", sv: "Uppgradera nu", da: "Opgrader nu" },
+  contact_sales: { en: "Contact Sales", no: "Kontakt salg", sv: "Kontakta sälj", da: "Kontakt salg" },
+  full_name: { en: "Full Name", no: "Fullt navn", sv: "Fullständigt namn", da: "Fulde navn" },
 };
 
 interface LanguageContextType {

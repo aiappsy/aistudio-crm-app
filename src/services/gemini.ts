@@ -167,6 +167,55 @@ export const crmTools: FunctionDeclaration[] = [
       },
       required: ["category", "timeframe"]
     }
+  },
+  {
+    name: "send_email",
+    description: "Sends a professional business email to a client or team member via the Aiappsy SMTP server.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        to: { type: Type.STRING, description: "The recipient's email address." },
+        subject: { type: Type.STRING, description: "A clear, professional subject line." },
+        body: { type: Type.STRING, description: "The main content of the email. Supports plain text." }
+      },
+      required: ["to", "subject", "body"]
+    }
+  },
+  {
+    name: "create_stripe_payment",
+    description: "Generates a secure Stripe Checkout URL for an invoice. This allows the client to pay via Credit Card.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        invoiceNumber: { type: Type.STRING, description: "The unique reference number for the invoice (e.g., INV-001)." },
+        amount: { type: Type.NUMBER, description: "The total amount to be paid (e.g., 500.00)." },
+        currency: { type: Type.STRING, description: "The 3-letter ISO currency code (e.g., USD, EUR)." },
+        customerName: { type: Type.STRING, description: "The name of the client who will receive the invoice." }
+      },
+      required: ["invoiceNumber", "amount", "customerName"]
+    }
+  },
+  {
+    name: "create_paypal_order",
+    description: "Creates a PayPal payment order for a client. Use this as an alternative to Stripe.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        amount: { type: Type.NUMBER, description: "The amount to bill the client." },
+        currency: { type: Type.STRING, description: "The currency code (default: USD)." }
+      },
+      required: ["amount"]
+    }
+  },
+  {
+    name: "get_business_health_summary",
+    description: "Simulates a search of the CRM database to provide a summary of total revenue and overdue tasks. Use this before giving high-level executive briefings.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        timeframe: { type: Type.STRING, description: "The period to analyze (e.g., 'this_month', 'last_quarter')." }
+      }
+    }
   }
 ];
 

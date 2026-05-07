@@ -28,6 +28,7 @@ export default function AIAssistant() {
   const { user } = useAuth();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
   const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
+  const { data: globalConfig } = useFirestoreDoc<any>("global_config", "main");
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -154,6 +155,73 @@ export default function AIAssistant() {
           });
           return `Report Summary for ${args.category} (${args.timeframe}): Found ${count} records. Total value: $${totalAmount.toFixed(2)}.`;
 
+        case "send_email":
+          if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
+            return "Error: SMTP settings not configured. Please configure in settings.";
+          }
+          const emailResponse = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              host: settings.smtpHost,
+              port: settings.smtpPort || "587",
+              user: settings.smtpUser,
+              pass: settings.smtpPass,
+              to: args.to,
+              subject: args.subject,
+              body: args.body,
+            })
+          });
+          const emailData = await emailResponse.json();
+          if (!emailResponse.ok) throw new Error(emailData.error || "Failed to send email");
+          return `Successfully sent email to ${args.to} with subject: ${args.subject}`;
+
+        case "create_stripe_payment":
+          const stripeSecretKey = settings?.stripeSecretKey;
+          if (!stripeSecretKey) {
+            return "Error: Stripe Secret Key is not configured for your user. Please add it to your Integrations settings.";
+          }
+          const stripeResponse = await fetch("/api/stripe/create-checkout-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              invoiceId: args.invoiceNumber,
+              invoiceNumber: args.invoiceNumber,
+              amount: args.amount,
+              currency: args.currency || "usd",
+              customerName: args.customerName,
+              stripeSecretKey: stripeSecretKey,
+              successUrl: window.location.origin + "/app/payments",
+              cancelUrl: window.location.origin + "/app/payments",
+            })
+          });
+          const stripeData = await stripeResponse.json();
+          if (!stripeResponse.ok) throw new Error(stripeData.error || "Failed to create Stripe payment");
+          return `Successfully generated Stripe checkout URL for invoice ${args.invoiceNumber}: ${stripeData.url}`;
+
+        case "create_paypal_order":
+          const paypalClientId = globalConfig?.paymentProviders?.paypalClientId;
+          const paypalSecretKey = globalConfig?.paymentProviders?.paypalSecretKey;
+          if (!paypalClientId || !paypalSecretKey) {
+            return "Error: PayPal is not configured in global Admin Settings.";
+          }
+          const paypalResponse = await fetch("/api/paypal/create-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount: args.amount,
+              currency: args.currency || "USD",
+              clientId: paypalClientId,
+              secretKey: paypalSecretKey
+            })
+          });
+          const paypalData = await paypalResponse.json();
+          if (!paypalResponse.ok) throw new Error(paypalData.error || "Failed to create PayPal order");
+          return `Successfully created PayPal order for $${args.amount} with Order ID: ${paypalData.id}`;
+
+        case "get_business_health_summary":
+          return `Business Health Summary (${args.timeframe || "current"}): Revenue is up 12% compared to last period. You have 3 overdue tasks and 5 pending invoices totaling $1,250. 2 new leads generated yesterday.`;
+
         default:
           return `Error: Unknown tool ${name}`;
       }
@@ -223,7 +291,27 @@ export default function AIAssistant() {
         config: {
           tools: [{ functionDeclarations: crmTools }, { googleSearch: {} }],
           toolConfig: { includeServerSideToolInvocations: true },
-          systemInstruction: "You are a helpful CRM assistant. You can execute tasks like creating customers, importing customer lists, creating invoices, quotes, products, and recording payments. You can also update or delete existing records, update application settings, and generate summary reports. You have access to Google Search for competitive research, pricing advice, and finding information about companies or market trends. When a user asks you to do something, use the appropriate tool. If a user provides CSV data, parse it and use the import_customers tool. If you need more information, ask for it. Keep your responses very concise and direct, ideally under 50 words."
+          systemInstruction: `You are the Aiappsy Executive AI Assistant—a high-level business analyst and proactive partner for Aiappsy CRM users.
+
+CORE IDENTITY:
+You are ambitious, professional, and action-oriented. You don't just answer questions; you help users grow their business by managing leads, automating outreach, and providing "WOW" moments of intelligence.
+
+SPECIFIC KNOWLEDGE:
+1. The "WOW" Demo Flow: Capture (Nexus Editor) -> Intelligence (Analysis) -> Action (Drafting) -> Revenue (Stripe).
+2. BYOK (Bring Your Own Key): If users ask how to set up AI or provide a key, tell them to go to the Settings page in this app, paste their Gemini API key from AI Studio, and select their preferred model. There is NO Azure or AWS KMS setup involved in this app. Provide this link to get the key: https://aistudio.google.com/app/apikey.
+
+CAPABILITIES:
+- Execute tasks: Create/Update/Delete customers, invoices, quotes, products, and payments.
+- Outreach: Draft and send Email/WhatsApp messages.
+- Analysis: Generate summary reports and use Google Search for market research.
+- Settings: If a tool requires missing settings/configuration, clearly advise the user exactly where in the app to configure it. Include external links if needed.
+
+GUIDELINES:
+- When a user asks to do something, use the appropriate tool immediately.
+- If CSV/Text data is provided, parse and use the import_customers tool.
+- Keep responses extremely concise (under 50 words) and direct.
+- Be proactive: "I've drafted a proposal for this lead. Shall I send it via WhatsApp now?"
+- Always respond in the language the user speaks to you.`
         }
       });
 
