@@ -57,15 +57,16 @@ interface Quote {
 interface Customer {
   id: string;
   name: string;
+  type?: string;
 }
 
 export default function Quotes() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: quotes, loading: quotesLoading, add, update, remove } = useFirestoreCollection<Quote>("quotes");
-  const { data: customers, loading: customersLoading } = useFirestoreCollection<Customer>("customers");
+  const { data: customers, loading: customersLoading } = useFirestoreCollection<Customer>("contacts");
   const { add: addInvoice } = useFirestoreCollection<any>("invoices");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -312,7 +313,7 @@ export default function Quotes() {
                     <SelectValue placeholder={t("select_customer") || "Select customer"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {customers.map(c => (
+                    {customers.filter(c => !c.type || c.type === 'customer').map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

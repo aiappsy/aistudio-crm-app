@@ -7,7 +7,7 @@ import { useFirestoreDoc, useFirestoreQuery } from "@/lib/useFirestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, CheckCircle2, Mail, Globe, Sparkles, UserPlus, Trash2, Clock, CreditCard } from "lucide-react";
+import { Loader2, CheckCircle2, Mail, Globe, Sparkles, UserPlus, Trash2, Clock, CreditCard, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { db, handleFirestoreError, OperationType } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
@@ -26,7 +26,7 @@ interface UserSettings {
   vatRegion: "NO" | "SE" | "DK" | "INT";
   currency: string;
   aiModel: string;
-  tier: "free" | "pro";
+  tier: "free" | "pro" | "enterprise";
 }
 
 export default function Settings() {
@@ -50,13 +50,16 @@ export default function Settings() {
     smtpPass: "",
     vatRegion: "NO",
     currency: "USD",
-    aiModel: "gemini-2.0-flash",
+    aiModel: "gemini-3-flash-preview",
     tier: "free",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+
+  const { data: globalConfig } = useFirestoreDoc<any>("global_config", "main");
+  const [buyingTokens, setBuyingTokens] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -78,9 +81,10 @@ export default function Settings() {
     if (!inviteEmail || !userProfile?.organizationId) return;
     
     // Check limit
-    let limit = 3; // Default Free
-    if (formData.tier === "pro") limit = 50;
-    if (formData.tier === "enterprise") limit = 1000;
+    let limit = globalConfig?.tiers?.[formData.tier]?.memberLimit;
+    if (!limit) {
+      limit = formData.tier === "enterprise" ? 9999 : (formData.tier === "pro" ? 5 : 1);
+    }
 
     if (teamMembers.length + invitations.length >= limit) {
       alert(t("member_limit_reached"));
@@ -123,6 +127,15 @@ export default function Settings() {
     });
   };
 
+  const handleBuyTokens = async () => {
+    // Placeholder for Stripe integration
+    setBuyingTokens(true);
+    setTimeout(() => {
+      alert("This would open a Stripe checkout to purchase tokens at $" + (globalConfig?.tokenPrice || 1.5) + " per token.");
+      setBuyingTokens(false);
+    }, 1000);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
@@ -147,11 +160,11 @@ export default function Settings() {
       <div className="grid gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>{t("subscription_tier")}</CardTitle>
-            <CardDescription>{t("pro_features_desc")}</CardDescription>
+            <CardTitle>{t("subscription_tier")} & Tokens</CardTitle>
+            <CardDescription>{t("manage_plan_ai") || "Manage your plan and AI token balance."}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div 
                 className={cn(
                   "p-4 rounded-lg border-2 cursor-pointer transition-all",
@@ -160,9 +173,9 @@ export default function Settings() {
                 onClick={() => setFormData({ ...formData, tier: "free" })}
               >
                 <p className="font-bold text-lg">{t("free_tier")}</p>
-                <p className="text-sm text-muted-foreground">Basic CRM tools. No AI features.</p>
+                <p className="text-sm text-muted-foreground">{globalConfig?.tiers?.free?.memberLimit || 1} User, {globalConfig?.tiers?.free?.aiTokens || 10} AI Tokens/mo.</p>
                 <div className="mt-4">
-                  <span className="text-2xl font-bold">$0</span>
+                  <span className="text-2xl font-bold">${globalConfig?.tiers?.free?.price || 0}</span>
                   <span className="text-sm text-muted-foreground">/mo</span>
                 </div>
               </div>
@@ -177,12 +190,52 @@ export default function Settings() {
                   <Sparkles className="h-5 w-5 text-primary animate-pulse" />
                 </div>
                 <p className="font-bold text-lg">{t("pro_tier")}</p>
-                <p className="text-sm text-muted-foreground">{t("pro_features_desc")}</p>
+                <p className="text-sm text-muted-foreground">{t("up_to_users") || "Up to"} {globalConfig?.tiers?.pro?.memberLimit || 5} {t("users") || "Users"}, {globalConfig?.tiers?.pro?.aiTokens || 20} AI Tokens/mo.</p>
                 <div className="mt-4">
-                  <span className="text-2xl font-bold">$19</span>
+                  <span className="text-2xl font-bold">${globalConfig?.tiers?.pro?.price || 19}</span>
                   <span className="text-sm text-muted-foreground">/mo</span>
                 </div>
                 <p className="text-[10px] mt-2 text-primary font-medium italic">{t("byok_desc")}</p>
+              </div>
+              <div 
+                className={cn(
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative overflow-hidden",
+                  formData.tier === "enterprise" ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"
+                )}
+                onClick={() => setFormData({ ...formData, tier: "enterprise" })}
+              >
+                <div className="absolute top-2 right-2">
+                  <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+                </div>
+                <p className="font-bold text-lg">Enterprise</p>
+                <p className="text-sm text-muted-foreground">Unlimited Users, Unlimited Tokens.</p>
+                <div className="mt-4">
+                  <span className="text-2xl font-bold">${globalConfig?.tiers?.enterprise?.price || 49}</span>
+                  <span className="text-sm text-muted-foreground">/mo</span>
+                </div>
+                <p className="text-[10px] mt-2 text-primary font-medium italic">{t("byok_desc")}</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-xl border border-border/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Coins className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-lg">{t("ai_token_balance") || "AI Token Balance"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {userProfile?.aiTokens || 0} tokens remaining (1 token = 1 hour of AI use)
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <Button variant="outline" onClick={handleBuyTokens} disabled={buyingTokens}>
+                  {buyingTokens ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                  Buy Tokens (${globalConfig?.tokenPrice || 1.5}/ea)
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -192,7 +245,7 @@ export default function Settings() {
           <CardHeader>
             <CardTitle>{t("team_management")}</CardTitle>
             <CardDescription>
-              {t("team_members")} ({teamMembers.length} / {formData.tier === "pro" ? 50 : (formData.tier === "enterprise" ? "∞" : 3)})
+              {t("team_members")} ({teamMembers.length} / {globalConfig?.tiers?.[formData.tier]?.memberLimit || (formData.tier === "enterprise" ? "∞" : (formData.tier === "pro" ? 5 : 1))})
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -273,6 +326,49 @@ export default function Settings() {
 
         <Card>
           <CardHeader>
+            <CardTitle>{t("ai_configuration_byok") || "AI Configuration (BYOK)"}</CardTitle>
+            <CardDescription>Configure your own Gemini API key and select your preferred AI model.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">{t("gemini_api_key")}</label>
+              <Input 
+                type="password"
+                value={formData.geminiApiKey} 
+                onChange={e => setFormData({ ...formData, geminiApiKey: e.target.value })}
+                placeholder="AIzaSy..." 
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Don't have an API key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">{t("get_free_gemini_key") || "Get a free Gemini API key from Google AI Studio"}</a>.
+              </p>
+            </div>
+            
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">{t("ai_model")}</label>
+              <Select 
+                value={formData.aiModel || "gemini-3-flash-preview"} 
+                onValueChange={(val: string) => setFormData({ ...formData, aiModel: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select AI Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview (Default)</SelectItem>
+                  <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                  <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                  <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
+                  <SelectItem value="gemini-2.0-pro-exp">Gemini 2.0 Pro Experimental</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("ai_model_desc")}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>{t("company_profile")}</CardTitle>
             <CardDescription>{t("company_profile_desc")}</CardDescription>
           </CardHeader>
@@ -319,7 +415,7 @@ export default function Settings() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium">Default Currency</label>
+              <label className="text-sm font-medium">{t("default_currency") || "Default Currency"}</label>
               <Select 
                 value={formData.currency} 
                 onValueChange={(val: string) => setFormData({ ...formData, currency: val })}

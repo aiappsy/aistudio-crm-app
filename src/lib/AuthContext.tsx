@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!userSnap.exists()) {
       const isSuperAdmin = user.email === "paljuritzen@gmail.com";
       const orgId = isSuperAdmin ? "admin-org" : `org-${user.uid}`;
+      const defaultTier = isSuperAdmin ? 'enterprise' : 'free';
       
       // Create User
       await setDoc(userRef, {
@@ -61,8 +62,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await setDoc(orgRef, {
         name: isSuperAdmin ? "System Admin" : `${user.displayName || 'My'} Team`,
         ownerId: user.uid,
-        tier: 'free',
-        memberLimit: 3,
+        tier: defaultTier,
+        memberLimit: isSuperAdmin ? 9999 : 3,
         createdAt: serverTimestamp()
       });
 
@@ -71,9 +72,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await setDoc(settingsRef, {
         companyName: isSuperAdmin ? "System Admin" : `${user.displayName || 'My'} Company`,
         email: user.email,
-        tier: 'free',
+        tier: defaultTier,
         createdAt: serverTimestamp()
       });
+    } else {
+      // Auto-upgrade existing super admin to enterprise
+      const userData = userSnap.data();
+      const isActuallySuperAdmin = user.email === "paljuritzen@gmail.com" || userData.role === 'super_admin';
+      
+      if (isActuallySuperAdmin) {
+        if (userData.role !== 'super_admin') {
+          await setDoc(userRef, { role: 'super_admin' }, { merge: true });
+        }
+        
+        const settingsRef = doc(db, 'settings', user.uid);
+        const settingsSnap = await getDoc(settingsRef);
+        if (!settingsSnap.exists() || settingsSnap.data().tier !== 'enterprise') {
+          await setDoc(settingsRef, { 
+            tier: 'enterprise',
+            companyName: userData.displayName ? `${userData.displayName}'s Company` : "System Admin",
+            email: userData.email
+          }, { merge: true });
+        }
+        
+        if (userData.organizationId) {
+          const orgRef = doc(db, 'organizations', userData.organizationId);
+          const orgSnap = await getDoc(orgRef);
+          if (!orgSnap.exists() || orgSnap.data().tier !== 'enterprise') {
+            await setDoc(orgRef, { tier: 'enterprise', memberLimit: 9999 }, { merge: true });
+          }
+        }
+      }
     }
   };
 

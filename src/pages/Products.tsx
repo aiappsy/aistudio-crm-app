@@ -55,7 +55,7 @@ export default function Products() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: products, loading, add, update, remove } = useFirestoreCollection<Product>("products");
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -119,7 +119,7 @@ export default function Products() {
     return (
       <div className="flex flex-col items-center justify-center h-[400px] text-center">
         <h2 className="text-xl font-semibold mb-2">{t("sign_in")}</h2>
-        <p className="text-muted-foreground">You need to be authenticated to manage products.</p>
+        <p className="text-muted-foreground">{t("auth_required_products") || "You need to be authenticated to manage products."}</p>
       </div>
     );
   }

@@ -27,7 +27,7 @@ export default function AIAssistant() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -171,35 +171,55 @@ export default function AIAssistant() {
     setMessages(prev => [...prev, { role: "user", content: messageToSend }]);
     setLoading(true);
 
-    // Tier Check
-    if (settings?.tier !== "pro") {
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: "The AI Assistant is a Pro feature. Please upgrade your plan in the Settings page to unlock AI-powered CRM tools, smart insights, and competitive research." 
-      }]);
-      setLoading(false);
-      return;
+    // Token and BYOK Check
+    const hasBYOK = !!settings?.geminiApiKey;
+    const isEnterprise = settings?.tier === "enterprise" || userProfile?.role === "super_admin" || user?.email === "paljuritzen@gmail.com";
+    const availableTokens = userProfile?.aiTokens || 0;
+    const tokenExpiry = userProfile?.aiTokenExpiry?.toDate ? userProfile.aiTokenExpiry.toDate() : new Date(0);
+    const now = new Date();
+    const hasActiveTokenSession = tokenExpiry > now;
+
+    if (!hasBYOK && !isEnterprise) {
+      if (!hasActiveTokenSession) {
+        if (availableTokens > 0) {
+          // Deduct token and start 1-hour session
+          try {
+            const userRef = doc(db, "users", user.uid);
+            await updateDoc(userRef, {
+              aiTokens: availableTokens - 1,
+              aiTokenExpiry: new Date(now.getTime() + 60 * 60 * 1000) // +1 hour
+            });
+          } catch (e) {
+            console.error("Failed to deduct token", e);
+          }
+        } else {
+          // Out of tokens
+          setMessages(prev => [...prev, { 
+            role: "assistant", 
+            content: "You are out of AI tokens. Please purchase more tokens in the Settings page or provide your own Gemini API key (BYOK) to continue using the AI Assistant." 
+          }]);
+          setLoading(false);
+          return;
+        }
+      }
     }
 
-    // BYOK Check
-    if (!settings?.geminiApiKey) {
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: "You are on the Pro plan, but you haven't provided your Gemini API key yet. Please add it in the Settings page to enable AI features (BYOK model)." 
-      }]);
-      setLoading(false);
-      return;
-    }
+    const processHistory = () => {
+      let filtered = messages.filter(m => !m.isSystem && m.content);
+      // Gemini API history must start with 'user'
+      while (filtered.length > 0 && filtered[0].role !== "user") {
+        filtered.shift();
+      }
+      return filtered.map(m => ({
+        role: m.role === "user" ? "user" : "model",
+        parts: [{ text: m.content }],
+      }));
+    };
 
     try {
       const chat = ai.chats.create({
         model: settings?.aiModel || "gemini-3-flash-preview",
-        history: messages
-          .filter(m => !m.isSystem)
-          .map(m => ({
-            role: m.role === "user" ? "user" : "model",
-            parts: [{ text: m.content }],
-          })),
+        history: processHistory(),
         config: {
           tools: [{ functionDeclarations: crmTools }, { googleSearch: {} }],
           toolConfig: { includeServerSideToolInvocations: true },
@@ -297,10 +317,7 @@ export default function AIAssistant() {
       }
     } catch (error: any) {
       console.error("AI Assistant Error:", error);
-      const isLeaked = error?.message?.includes("leaked") || JSON.stringify(error).includes("leaked");
-      const errorMessage = isLeaked 
-        ? "The default API key has been flagged as leaked. To continue using the AI Assistant, please provide your own Gemini API key in the Settings page."
-        : "I'm sorry, I encountered an error. Please try again later.";
+      const errorMessage = `Error: ${error?.message || JSON.stringify(error)}`;
       setMessages(prev => [...prev, { role: "assistant", content: errorMessage }]);
     } finally {
       setLoading(false);

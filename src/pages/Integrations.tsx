@@ -65,8 +65,8 @@ export default function Integrations() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
-          <p className="text-muted-foreground">Connect your own services to power your CRM.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t("integrations") || "Integrations"}</h1>
+          <p className="text-muted-foreground">{t("integrations_desc") || "Connect your own services to power your CRM."}</p>
         </div>
         <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (saved ? <CheckCircle2 className="h-4 w-4" /> : null)}
@@ -83,7 +83,7 @@ export default function Integrations() {
                 <CreditCard className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <CardTitle>Stripe Payments</CardTitle>
+                <CardTitle>{t("stripe_payments") || "Stripe Payments"}</CardTitle>
                 <CardDescription>Accept credit card payments on your invoices.</CardDescription>
               </div>
             </div>
@@ -112,7 +112,7 @@ export default function Integrations() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Publishable Key</label>
+                <label className="text-sm font-medium">{t("publishable_key") || "Publishable Key"}</label>
                 <Input 
                   value={formData.stripePublishableKey} 
                   onChange={e => setFormData({ ...formData, stripePublishableKey: e.target.value })}
@@ -120,7 +120,7 @@ export default function Integrations() {
                 />
               </div>
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Secret Key</label>
+                <label className="text-sm font-medium">{t("secret_key") || "Secret Key"}</label>
                 <Input 
                   type="password"
                   value={formData.stripeSecretKey} 
@@ -140,7 +140,7 @@ export default function Integrations() {
                 <Sparkles className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <CardTitle>Gemini AI Intelligence</CardTitle>
+                <CardTitle>{t("gemini_ai_intelligence") || "Gemini AI Intelligence"}</CardTitle>
                 <CardDescription>Power your outreach and research with your own AI key.</CardDescription>
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function Integrations() {
 
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Gemini API Key</label>
+                <label className="text-sm font-medium">{t("gemini_api_key") || "Gemini API Key"}</label>
                 <Input 
                   type="password"
                   value={formData.geminiApiKey} 
@@ -178,7 +178,7 @@ export default function Integrations() {
                 />
               </div>
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Preferred AI Model</label>
+                <label className="text-sm font-medium">{t("preferred_ai_model") || "Preferred AI Model"}</label>
                 <select 
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   value={formData.aiModel}

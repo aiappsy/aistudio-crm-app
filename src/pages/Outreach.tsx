@@ -33,9 +33,9 @@ export default function Outreach() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: outreach, loading, add } = useFirestoreCollection<OutreachRecord>("outreach");
-  const { data: customers } = useFirestoreCollection<any>("customers");
+  const { data: customers } = useFirestoreCollection<any>("contacts");
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
@@ -85,11 +85,57 @@ export default function Outreach() {
 
   const handleSend = async () => {
     const customer = customers.find(c => c.id === newOutreach.customerId);
+    
+    let status: "Sent" | "Failed" = "Sent";
+    let errorMessage = "";
+
+    if (newOutreach.platform === "Email") {
+      if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass || !customer?.email) {
+        alert("Cannot send email. Please ensure SMTP settings are configured and the customer has an email address.");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            host: settings.smtpHost,
+            port: settings.smtpPort || "587",
+            user: settings.smtpUser,
+            pass: settings.smtpPass,
+            to: customer.email,
+            subject: newOutreach.subject,
+            body: newOutreach.message
+          })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to send email");
+        }
+      } catch (error: any) {
+        console.error("Failed to send email:", error);
+        status = "Failed";
+        errorMessage = error.message;
+        alert(`Failed to send email: ${errorMessage}`);
+      }
+    } else {
+      // For WhatsApp, we currently just log it visually or could add an API here later
+      // A common approach is opening wa.me link
+      if (customer?.phone) {
+        window.open(`https://wa.me/${customer.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(newOutreach.message)}`, '_blank');
+      } else {
+        alert("Customer does not have a phone number for WhatsApp.");
+      }
+    }
+
     await add({
       ...newOutreach,
       customerName: customer?.name || "Unknown",
-      status: "Sent"
+      status
     });
+    
     setIsDialogOpen(false);
     setNewOutreach({ customerId: "", platform: "Email", subject: "", message: "" });
   };
@@ -121,7 +167,7 @@ export default function Outreach() {
                     <SelectValue placeholder={t("select_customer_placeholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {customers.map(c => (
+                    {customers.filter((c: any) => !c.type || c.type === 'customer').map((c: any) => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

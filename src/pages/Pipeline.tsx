@@ -6,11 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, Reorder } from "framer-motion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Contact {
   id: string;
   name: string;
   company: string;
+  email: string;
   status: "Active" | "Lead" | "Inactive";
   type: "customer" | "supplier" | "custom";
 }
@@ -19,10 +24,25 @@ const STAGES = ["Lead", "Active", "Inactive"] as const;
 
 export default function Pipeline() {
   const { t } = useLanguage();
-  const { data: contacts, loading, update } = useFirestoreCollection<Contact>("contacts");
+  const { data: contacts, loading, update, add } = useFirestoreCollection<Contact>("contacts");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newDeal, setNewDeal] = useState<Partial<Contact>>({
+    name: "",
+    company: "",
+    email: "",
+    type: "customer",
+    status: "Lead"
+  });
 
   const moveContact = async (id: string, newStatus: Contact["status"]) => {
     await update(id, { status: newStatus });
+  };
+
+  const handleAddDeal = async () => {
+    if (!newDeal.name || !newDeal.company) return;
+    await add(newDeal);
+    setIsAddModalOpen(false);
+    setNewDeal({ name: "", company: "", email: "", type: "customer", status: "Lead" });
   };
 
   if (loading) {
@@ -38,11 +58,11 @@ export default function Pipeline() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t("pipeline")}</h1>
-          <p className="text-muted-foreground">Visual sales pipeline. Drag and drop to update status.</p>
+          <p className="text-muted-foreground">{t("visual_sales_pipeline")}</p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={() => setIsAddModalOpen(true)}>
           <Plus size={18} />
-          New Deal
+          {t("new_deal")}
         </Button>
       </div>
 
@@ -107,6 +127,64 @@ export default function Pipeline() {
           </div>
         ))}
       </div>
+
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("add_new_deal")}</DialogTitle>
+            <DialogDescription>{t("create_new_prospect")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("contact_name")}</Label>
+              <Input 
+                value={newDeal.name || ""}
+                onChange={(e) => setNewDeal({ ...newDeal, name: e.target.value })}
+                placeholder="e.g. Jane Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("email")}</Label>
+              <Input 
+                type="email"
+                value={newDeal.email || ""}
+                onChange={(e) => setNewDeal({ ...newDeal, email: e.target.value })}
+                placeholder="jane@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("company")}</Label>
+              <Input 
+                value={newDeal.company || ""}
+                onChange={(e) => setNewDeal({ ...newDeal, company: e.target.value })}
+                placeholder="e.g. Acme Corp"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("pipeline_stage")}</Label>
+              <Select 
+                value={newDeal.status} 
+                onValueChange={(val: any) => setNewDeal({ ...newDeal, status: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Lead">{t("lead")}</SelectItem>
+                  <SelectItem value="Active">{t("active")}</SelectItem>
+                  <SelectItem value="Inactive">{t("inactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>{t("cancel")}</Button>
+            <Button onClick={handleAddDeal} disabled={!newDeal.name || !newDeal.company}>
+              {t("save_deal")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

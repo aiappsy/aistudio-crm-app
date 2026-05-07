@@ -19,7 +19,7 @@ interface Insight {
 export default function SmartInsights({ data }: { data: any }) {
   const { user } = useAuth();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
 

@@ -66,7 +66,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
   const { user } = useAuth();
   const { t } = useLanguage();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: contacts, loading, add, update, remove } = useFirestoreCollection<Contact>("contacts");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -209,12 +209,28 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 type === "supplier" ? t("suppliers") : 
                 type === "custom" ? t("custom_types") : t("contacts");
 
+  const desc = type === "customer" ? t("customers_desc") : 
+               type === "supplier" ? t("suppliers_desc") : 
+               type === "custom" ? t("custom_types_desc") : t("customers_desc");
+
+  const addButtonText = type === "customer" ? t("add_customer") : 
+                        type === "supplier" ? t("add_supplier") : 
+                        type === "custom" ? t("add_custom_type") : t("add_customer");
+
+  const editButtonText = type === "customer" ? t("edit_customer") : 
+                         type === "supplier" ? t("edit_supplier") : 
+                         type === "custom" ? t("edit_custom_type") : t("edit_customer");
+
+  const detailsText = type === "customer" ? t("customer_details") : 
+                      type === "supplier" ? t("supplier_details") : 
+                      type === "custom" ? t("custom_type_details") : t("customer_details");
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-          <p className="text-muted-foreground">{t("customers_desc")}</p>
+          <p className="text-muted-foreground">{desc}</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -235,7 +251,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
           </Button>
           <Button className="gap-2" onClick={handleOpenAdd}>
             <Plus size={18} />
-            {t("add_customer")}
+            {addButtonText}
           </Button>
         </div>
       </div>
@@ -290,7 +306,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                           <Sparkles className="h-3 w-3 text-primary animate-pulse" title="AI Insight: High value contact" />
                         )}
                         {new Date().getTime() - new Date(contact.lastContact).getTime() > 30 * 24 * 60 * 60 * 1000 && (
-                          <Badge variant="destructive" className="text-[8px] h-4 px-1 uppercase tracking-tighter">Churn Risk</Badge>
+                          <Badge variant="destructive" className="text-[8px] h-4 px-1 uppercase tracking-tighter">{t("churn_risk") || "Churn Risk"}</Badge>
                         )}
                       </div>
                     </TableCell>
@@ -362,9 +378,9 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
         <DialogContent className="sm:max-w-[425px]">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>{editingContact ? t("edit_customer") : t("add_customer")}</DialogTitle>
+              <DialogTitle>{editingContact ? editButtonText : addButtonText}</DialogTitle>
               <DialogDescription>
-                {t("customer_details")}
+                {detailsText}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -406,7 +422,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="type">Contact Type</Label>
+                <Label htmlFor="type">{t("contact_type") || "Contact Type"}</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(value: any) => setFormData({ ...formData, type: value })}
@@ -439,7 +455,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
               </div>
             </div>
             <DialogFooter>
-              <Button type="submit">{editingContact ? t("save_changes") : t("add_customer")}</Button>
+              <Button type="submit">{editingContact ? t("save_changes") : addButtonText}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

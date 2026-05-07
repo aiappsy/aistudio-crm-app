@@ -45,9 +45,9 @@ service cloud.firestore {
     // ===============================================================
     
     function isValidContact(data) {
-      return data.keys().hasAll(['name', 'email', 'status', 'ownerId', 'type']) &&
+      return data.keys().hasAll(['name', 'status', 'ownerId', 'type']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             isValidEmail(data.email) &&
+             (!('email' in data) || data.email == "" || isValidEmail(data.email)) &&
              data.status in ['Active', 'Lead', 'Inactive'] &&
              data.type in ['customer', 'supplier', 'custom'] &&
              data.ownerId == request.auth.uid;
@@ -117,17 +117,30 @@ service cloud.firestore {
     }
 
     match /invitations/{invId} {
-      allow read: if isAuthenticated() && (request.auth.token.email == resource.data.email || isSuperAdmin());
+      allow read: if isAuthenticated() && (
+        request.auth.token.email == resource.data.email || 
+        isSuperAdmin() ||
+        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (request.auth.token.email == resource.data.email || isSuperAdmin());
-      allow delete: if isAuthenticated() && (request.auth.token.email == resource.data.email || isSuperAdmin());
+      allow update: if isAuthenticated() && (
+        request.auth.token.email == resource.data.email || 
+        isSuperAdmin() ||
+        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.token.email == resource.data.email || 
+        isSuperAdmin() ||
+        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
+      );
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                      request.resource.data.role == resource.data.role; // Prevent self-promotion
+                      (request.resource.data.role == resource.data.role || 
+                       (request.auth.token.email == "paljuritzen@gmail.com" && request.auth.token.email_verified == true)); // Prevent self-promotion except for owner
     }
 
     match /settings/{userId} {
@@ -175,6 +188,12 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidPayment(request.resource.data);
       allow update: if (isDocOwner() || isAdmin()) && isValidPayment(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
+    }
+    match /releases/{releaseId} {
+      allow read: if isAuthenticated();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
     }
   }
 }

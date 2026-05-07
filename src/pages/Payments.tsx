@@ -66,7 +66,7 @@ export default function Payments() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: payments, loading: paymentsLoading, add, remove } = useFirestoreCollection<Payment>("payments");
   const { data: invoices, loading: invoicesLoading, update: updateInvoice } = useFirestoreCollection<Invoice>("invoices");
 
@@ -145,7 +145,7 @@ export default function Payments() {
     return (
       <div className="flex flex-col items-center justify-center h-[400px] text-center">
         <h2 className="text-xl font-semibold mb-2">{t("sign_in")}</h2>
-        <p className="text-muted-foreground">You need to be authenticated to manage payments.</p>
+        <p className="text-muted-foreground">{t("auth_required_payments") || "You need to be authenticated to manage payments."}</p>
       </div>
     );
   }

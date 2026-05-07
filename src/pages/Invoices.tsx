@@ -56,15 +56,16 @@ interface Invoice {
 interface Customer {
   id: string;
   name: string;
+  type?: string;
 }
 
 export default function Invoices() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: invoices, loading: invoicesLoading, add, update, remove } = useFirestoreCollection<Invoice>("invoices");
-  const { data: customers, loading: customersLoading } = useFirestoreCollection<Customer>("customers");
+  const { data: customers, loading: customersLoading } = useFirestoreCollection<Customer>("contacts");
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -312,7 +313,7 @@ export default function Invoices() {
                     <SelectValue placeholder={t("select_customer") || "Select customer"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {customers.map(c => (
+                    {customers.filter(c => !c.type || c.type === 'customer').map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

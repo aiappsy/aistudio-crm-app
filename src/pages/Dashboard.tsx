@@ -36,7 +36,7 @@ export default function Dashboard() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: settings } = useFirestoreDoc<any>("settings", userProfile?.organizationId || user?.uid);
+  const { data: settings } = useFirestoreDoc<any>("settings", user?.uid);
   const { data: contacts, loading: contactsLoading } = useFirestoreCollection<any>("contacts");
   const { data: invoices, loading: invoicesLoading } = useFirestoreCollection<any>("invoices");
   const { data: payments, loading: paymentsLoading } = useFirestoreCollection<any>("payments");
