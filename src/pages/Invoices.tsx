@@ -107,21 +107,19 @@ export default function Invoices() {
   };
 
   const handlePayment = async (invoice: Invoice) => {
-    if (!settings?.stripeSecretKey) {
-      alert("Please configure your Stripe Secret Key in Settings first.");
-      return;
-    }
-
     try {
+      const idToken = await (user as any)?.getIdToken();
       const response = await fetch("/api/stripe/create-checkout-session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           invoiceId: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
           amount: invoice.totalAmount || invoice.amount,
           customerName: invoice.customerName,
-          stripeSecretKey: settings.stripeSecretKey,
           successUrl: `${window.location.origin}/app/payments?success=true&invoiceId=${invoice.id}`,
           cancelUrl: `${window.location.origin}/app/invoices?canceled=true`,
         }),
@@ -200,7 +198,7 @@ export default function Invoices() {
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -297,7 +295,7 @@ export default function Invoices() {
                 <Label htmlFor="invoiceNumber">{t("invoice_number")}</Label>
                 <Input
                   id="invoiceNumber"
-                  value={formData.invoiceNumber}
+                  value={formData.invoiceNumber ?? ""}
                   onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
                   required
                 />
@@ -305,7 +303,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="customer">{t("customer")}</Label>
                 <Select
-                  value={formData.customerId}
+                  value={formData.customerId ?? ""}
                   onValueChange={(value) => setFormData({ ...formData, customerId: value })}
                   required
                 >
@@ -325,7 +323,7 @@ export default function Invoices() {
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  value={formData.amount ?? ""}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
                   required
                 />
@@ -333,7 +331,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="productType">{t("product_type")}</Label>
                 <Select
-                  value={formData.productType}
+                  value={formData.productType ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, productType: value })}
                   required
                 >
@@ -353,7 +351,7 @@ export default function Invoices() {
                 <Input
                   id="date"
                   type="date"
-                  value={formData.date}
+                  value={formData.date ?? ""}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
@@ -361,7 +359,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>

@@ -20,7 +20,7 @@ export function useFirestoreCollection<T>(collectionName: string) {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !collectionName) {
       setData([]);
       setLoading(false);
       return;
@@ -28,8 +28,7 @@ export function useFirestoreCollection<T>(collectionName: string) {
 
     const q = query(
       collection(db, collectionName),
-      where('ownerId', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      where('ownerId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, 
@@ -42,7 +41,8 @@ export function useFirestoreCollection<T>(collectionName: string) {
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, collectionName);
+        setLoading(false);
+        try { handleFirestoreError(error, OperationType.LIST, collectionName); } catch(e) { console.error(e) }
       }
     );
 
@@ -103,7 +103,8 @@ export function useFirestoreDoc<T>(collectionName: string, docId: string | undef
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, `${collectionName}/${docId}`);
+        setLoading(false);
+        try { handleFirestoreError(error, OperationType.GET, `${collectionName}/${docId}`); } catch(e) { console.error(e) }
       }
     );
 
@@ -133,7 +134,7 @@ export function useFirestoreQuery<T>(collectionName: string, queryConstraints: a
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !collectionName) {
       setData([]);
       setLoading(false);
       return;
@@ -151,7 +152,8 @@ export function useFirestoreQuery<T>(collectionName: string, queryConstraints: a
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, collectionName);
+        setLoading(false);
+        try { handleFirestoreError(error, OperationType.LIST, collectionName); } catch(e) { console.error(e) }
       }
     );
 

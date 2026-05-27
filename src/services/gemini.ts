@@ -1,8 +1,43 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
-const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const defaultAi = new GoogleGenAI({ apiKey: typeof process !== 'undefined' ? process?.env?.GEMINI_API_KEY || "" : "" });
 
 export const crmTools: FunctionDeclaration[] = [
+  {
+    name: "score_lead",
+    description: "Score a lead using the active BANT, MEDDIC, or CHAMP framework based on available data.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId: { type: Type.STRING, description: "ID of the contact to score" },
+        contactName: { type: Type.STRING, description: "Name of the contact to score" }
+      },
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "enrich_contact",
+    description: "Enrich a contact with additional data such as company industry, domain, name, phone, etc.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId: { type: Type.STRING, description: "ID of the contact to enrich" }
+      },
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "merge_contacts",
+    description: "Merge two duplicate contacts together.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId1: { type: Type.STRING, description: "ID of the first contact" },
+        contactId2: { type: Type.STRING, description: "ID of the second contact" }
+      },
+      required: ["contactId1", "contactId2"]
+    }
+  },
   {
     name: "create_customer",
     description: "Create a new customer or lead in the CRM",
@@ -239,21 +274,68 @@ export async function callManagedAi(options: {
   return await response.json();
 }
 
-export async function getSmartInsights(data: any, customApiKey?: string, model?: string) {
-  const ai = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+export function resolveModel(model?: string | null): string {
+  if (!model) {
+    return "gemini-2.5-flash";
+  }
+  if (
+    model.includes("gemini-3-flash-preview") || 
+    model.includes("gemini-2.5-flash") || 
+    model.includes("gemini-2.0-flash") ||
+    model.includes("gemini-1.5-flash") ||
+    model.includes("gemini-1.5-pro") ||
+    model === "default"
+  ) {
+    return "gemini-2.5-flash";
+  }
+  return model;
+}
+
+export async function analyzeSalesForecast(deals: any[], customApiKey?: string, model?: string) {
+  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
   
+  const prompt = `
+        You are the Smart Forecasting Engine. Analyze the following CRM pipeline data and provide a detailed revenue forecast.
+        
+        Focus on:
+        1. HISTORICAL WIN RATES & DEALS: Project next quarter's revenue using probability and historical deal velocity.
+        2. SEASONAL PATTERNS: Note any fluctuations over time (if apparent in timestamps) and account for typical quarterly cycles.
+        3. BOTTLENECKS: Identify deals stalled or showing velocity drops.
+        4. QUOTA ATTAINMENT: Provide a summary of how the forecasted revenue tracks against an assumed $100,000 monthly quota. Why did the forecast change?
+        
+        Data: ${JSON.stringify(deals)}
+      `;
+
   try {
-    const response = await ai.models.generateContent({
-      model: model || "gemini-3-flash-preview",
-      contents: `
+    if (apiKeyToUse) {
+      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+      const response = await ai.models.generateContent({
+        model: resolveModel(model),
+        contents: prompt
+      });
+      return response.text;
+    } else {
+      const response = await callManagedAi({
+        prompt: prompt
+      });
+      return response.text;
+    }
+  } catch (error) {
+    console.error("Error analyzing sales forecast:", error);
+    throw error;
+  }
+}
+
+export async function getSmartInsights(data: any, customApiKey?: string, model?: string) {
+  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
+  
+  const prompt = `
         You are an expert business analyst for Aiappsy CRM. 
         Analyze the following business data and provide 3-4 concise, actionable insights or recommendations.
         
         Data: ${JSON.stringify(data)}
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+      `;
+  const schema = {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
@@ -275,11 +357,30 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
             },
             required: ["title", "description", "type"]
           }
-        }
-      }
-    });
+        };
 
-    const text = response.text;
+  try {
+    let text;
+    if (apiKeyToUse) {
+      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+      const response = await ai.models.generateContent({
+        model: resolveModel(model),
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema
+        }
+      });
+      text = response.text;
+    } else {
+      const response = await callManagedAi({
+        prompt: prompt,
+        responseMimeType: "application/json",
+        responseSchema: schema
+      });
+      text = response.text;
+    }
+
     if (text) {
       return JSON.parse(text);
     }
@@ -306,6 +407,29 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
   }
 }
 
+export async function getDailyBriefing(promptData: string, customApiKey?: string, model?: string) {
+  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
+
+  try {
+    if (apiKeyToUse) {
+      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+      const response = await ai.models.generateContent({
+        model: resolveModel(model),
+        contents: promptData
+      });
+      return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
+    } else {
+      const response = await callManagedAi({
+        prompt: promptData
+      });
+      return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
+    }
+  } catch (error) {
+    console.error("Error generating daily briefing:", error);
+    throw error;
+  }
+}
+
 export async function draftOutreach(options: {
   customerName: string;
   customerContext?: string;
@@ -314,33 +438,47 @@ export async function draftOutreach(options: {
   customApiKey?: string;
   model?: string;
 }) {
-  const ai = options.customApiKey ? new GoogleGenAI({ apiKey: options.customApiKey }) : defaultAi;
+  const apiKeyToUse = options.customApiKey && typeof options.customApiKey === "string" && options.customApiKey.trim().length > 10 ? options.customApiKey.trim() : null;
   
-  try {
-    const response = await ai.models.generateContent({
-      model: options.model || "gemini-2.0-flash",
-      contents: `
+  const prompt = `
         Draft a professional ${options.platform} outreach message for ${options.customerName}.
         Purpose: ${options.purpose}
         Context: ${options.customerContext || "No additional context provided."}
         
         If it's an Email, provide a Subject line and a Body.
         If it's WhatsApp, provide only the message body.
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+      `;
+  const schema = {
           type: Type.OBJECT,
           properties: {
             subject: { type: Type.STRING },
             message: { type: Type.STRING }
           },
           required: ["message"]
-        }
-      }
-    });
+        };
 
-    const text = response.text;
+  try {
+    let text;
+    if (apiKeyToUse) {
+      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+      const response = await ai.models.generateContent({
+        model: resolveModel(options.model),
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema
+        }
+      });
+      text = response.text;
+    } else {
+      const response = await callManagedAi({
+        prompt: prompt,
+        responseMimeType: "application/json",
+        responseSchema: schema
+      });
+      text = response.text;
+    }
+
     if (text) {
       return JSON.parse(text);
     }

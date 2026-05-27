@@ -1,15 +1,15 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { 
-  auth, 
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { User, onAuthStateChanged } from "firebase/auth";
+import {
+  auth,
   db,
-  signInWithGoogle as firebaseSignInWithGoogle, 
-  signOut, 
-  createUserWithEmailAndPassword, 
+  signInWithGoogle as firebaseSignInWithGoogle,
+  signOut,
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  updateProfile
-} from './firebase';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+  updateProfile,
+} from "./firebase";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 interface AuthContextType {
   user: User | null;
@@ -26,96 +26,176 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [hasSavedUser, setHasSavedUser] = useState(false);
+  const saveInProgress = React.useRef(false);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        await saveUserToFirestore(user);
+        if (!hasSavedUser && !saveInProgress.current) {
+          saveInProgress.current = true;
+          try {
+            await saveUserToFirestore(user);
+            setHasSavedUser(true);
+          } catch (error) {
+            console.error("Failed to save user to Firestore on login:", error);
+          } finally {
+            saveInProgress.current = false;
+          }
+        }
+      } else {
+        setHasSavedUser(false);
+        saveInProgress.current = false;
       }
       setUser(user);
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [hasSavedUser]);
 
   const saveUserToFirestore = async (user: User) => {
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
+    try {
+      console.log("Checking userRef...");
+      const userRef = doc(db, "users", user.uid);
 
-    if (!userSnap.exists()) {
-      const isSuperAdmin = user.email === "paljuritzen@gmail.com";
-      const orgId = isSuperAdmin ? "admin-org" : `org-${user.uid}`;
-      const defaultTier = isSuperAdmin ? 'enterprise' : 'free';
-      
-      // Create User
-      await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        role: isSuperAdmin ? 'super_admin' : 'admin',
-        organizationId: orgId,
-        createdAt: serverTimestamp()
-      });
+      let userSnap;
+      try {
+        userSnap = await getDoc(userRef);
+      } catch (e) {
+        console.error("Failed on getDoc(userRef)", e);
+        // Do not throw, gracefully fallback
+      }
 
-      // Create Organization
-      const orgRef = doc(db, 'organizations', orgId);
-      await setDoc(orgRef, {
-        name: isSuperAdmin ? "System Admin" : `${user.displayName || 'My'} Team`,
-        ownerId: user.uid,
-        tier: defaultTier,
-        memberLimit: isSuperAdmin ? 9999 : 3,
-        createdAt: serverTimestamp()
-      });
+      if (!userSnap || !userSnap.exists()) {
+        const isSuperAdmin = user.email === "paljuritzen@gmail.com";
+        const orgId = isSuperAdmin ? "admin-org" : `org-${user.uid}`;
+        const defaultTier = isSuperAdmin ? "enterprise" : "free";
 
-      // Create default settings
-      const settingsRef = doc(db, 'settings', user.uid);
-      await setDoc(settingsRef, {
-        companyName: isSuperAdmin ? "System Admin" : `${user.displayName || 'My'} Company`,
-        email: user.email,
-        tier: defaultTier,
-        createdAt: serverTimestamp()
-      });
-    } else {
-      // Auto-upgrade existing super admin to enterprise
-      const userData = userSnap.data();
-      const isActuallySuperAdmin = user.email === "paljuritzen@gmail.com" || userData.role === 'super_admin';
-      
-      if (isActuallySuperAdmin) {
-        if (userData.role !== 'super_admin') {
-          await setDoc(userRef, { role: 'super_admin' }, { merge: true });
+        console.log("Saving user doc...", {
+          uid: user.uid,
+          role: isSuperAdmin ? "super_admin" : "admin",
+        });
+        try {
+          await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || null,
+            photoURL: user.photoURL || null,
+            role: isSuperAdmin ? "super_admin" : "admin",
+            organizationId: orgId,
+            aiTokens: isSuperAdmin ? 9999 : 30,
+            createdAt: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Failed on setDoc(userRef)", e);
         }
-        
-        const settingsRef = doc(db, 'settings', user.uid);
-        const settingsSnap = await getDoc(settingsRef);
-        if (!settingsSnap.exists() || settingsSnap.data().tier !== 'enterprise') {
-          await setDoc(settingsRef, { 
-            tier: 'enterprise',
-            companyName: userData.displayName ? `${userData.displayName}'s Company` : "System Admin",
-            email: userData.email
-          }, { merge: true });
+
+        console.log("Saving org doc...", { orgId });
+        try {
+          const orgRef = doc(db, "organizations", orgId);
+          await setDoc(orgRef, {
+            name: isSuperAdmin
+              ? "System Admin"
+              : `${user.displayName || "My"} Team`,
+            ownerId: user.uid,
+            tier: defaultTier,
+            memberLimit: isSuperAdmin ? 9999 : 3,
+            createdAt: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Failed on setDoc(orgRef)", e);
         }
-        
-        if (userData.organizationId) {
-          const orgRef = doc(db, 'organizations', userData.organizationId);
-          const orgSnap = await getDoc(orgRef);
-          if (!orgSnap.exists() || orgSnap.data().tier !== 'enterprise') {
-            await setDoc(orgRef, { tier: 'enterprise', memberLimit: 9999 }, { merge: true });
+
+        console.log("Saving settings doc...");
+        try {
+          const settingsRef = doc(db, "settings", user.uid);
+          await setDoc(settingsRef, {
+            companyName: isSuperAdmin
+              ? "System Admin"
+              : `${user.displayName || "My"} Company`,
+            email: user.email,
+            tier: defaultTier,
+            createdAt: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Failed on setDoc(settingsRef)", e);
+        }
+      } else {
+        console.log(
+          "User already exists, checking super_admin auto-upgrade...",
+        );
+        const userData = userSnap?.data() || {};
+        const isActuallySuperAdmin =
+          user.email === "paljuritzen@gmail.com" ||
+          userData.role === "super_admin";
+
+        if (isActuallySuperAdmin) {
+          if (userData.role !== "super_admin") {
+            console.log("Upgrading role to super_admin...");
+            try {
+              await setDoc(userRef, { role: "super_admin" }, { merge: true });
+            } catch (e) {
+              console.error("Failed on userRef upgrade", e);
+            }
+          }
+
+          console.log("Fetching settingsRef...");
+          try {
+            const settingsRef = doc(db, "settings", user.uid);
+            const settingsSnap = await getDoc(settingsRef);
+            if (
+              !settingsSnap.exists() ||
+              settingsSnap.data().tier !== "enterprise"
+            ) {
+              console.log("Upgrading settings tier to enterprise...");
+              await setDoc(
+                settingsRef,
+                {
+                  tier: "enterprise",
+                  companyName: userData.displayName
+                    ? `${userData.displayName}'s Company`
+                    : "System Admin",
+                  email: userData.email,
+                },
+                { merge: true },
+              );
+            }
+          } catch (e) {
+            console.error("Failed on settingsRef upgrade", e);
+          }
+
+          if (userData.organizationId) {
+            console.log("Fetching orgRef...");
+            try {
+              const orgRef = doc(db, "organizations", userData.organizationId);
+              const orgSnap = await getDoc(orgRef);
+              if (!orgSnap.exists() || orgSnap.data().tier !== "enterprise") {
+                console.log("Upgrading org tier to enterprise...");
+                await setDoc(
+                  orgRef,
+                  { tier: "enterprise", memberLimit: 9999 },
+                  { merge: true },
+                );
+              }
+            } catch (e) {
+              console.error("Failed on orgRef upgrade", e);
+            }
           }
         }
       }
+    } catch (error) {
+      console.error("Error internally in saveUserToFirestore:", error);
     }
   };
 
   const signIn = async () => {
     const result = await firebaseSignInWithGoogle();
-    await saveUserToFirestore(result.user);
     return result;
   };
 
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     const result = await createUserWithEmailAndPassword(auth, email, pass);
     await updateProfile(result.user, { displayName: name });
-    await saveUserToFirestore(result.user);
     return result;
   };
 
@@ -142,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

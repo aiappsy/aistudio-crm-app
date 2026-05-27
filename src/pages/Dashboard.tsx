@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
@@ -10,7 +10,9 @@ import {
   ArrowDownRight,
   Loader2,
   Sparkles,
-  UserPlus
+  UserPlus,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { 
   BarChart, 
@@ -25,11 +27,13 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import SmartInsights from "@/components/dashboard/SmartInsights";
+import DailyPlanner from "@/components/dashboard/DailyPlanner";
 import InvitationBanner from "@/components/InvitationBanner";
+import DemoDataGenerator from "@/components/dashboard/DemoDataGenerator";
 import { useFirestoreCollection, useFirestoreDoc } from "@/lib/useFirestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useLanguage } from "@/lib/i18n";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -41,6 +45,8 @@ export default function Dashboard() {
   const { data: invoices, loading: invoicesLoading } = useFirestoreCollection<any>("invoices");
   const { data: payments, loading: paymentsLoading } = useFirestoreCollection<any>("payments");
   const { data: outreach, loading: outreachLoading } = useFirestoreCollection<any>("outreach");
+
+  const [showStats, setShowStats] = useState(true);
 
   const stats = useMemo(() => {
     const totalRevenue = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
@@ -138,147 +144,176 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <InvitationBanner />
-      <div className="flex items-center justify-between">
+      
+      {contacts.length === 0 && user?.uid && (
+        <DemoDataGenerator ownerId={user.uid} />
+      )}
+
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between mb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("dashboard")}</h1>
-          <p className="text-muted-foreground">{t("welcome_back")}, {t("todays_overview")}</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {t(new Date().getHours() < 12 ? 'good_morning' : new Date().getHours() < 18 ? 'good_afternoon' : 'good_evening')}, {userProfile?.companyName || user?.displayName?.split(' ')[0] || "there"}!
+          </h1>
+          <p className="text-muted-foreground mt-1">{t("proactive_briefing")}</p>
         </div>
-        <Button onClick={() => navigate("/app/settings")} className="gap-2">
-          <UserPlus size={18} />
-          {t("invite_member")}
+        <div className="flex items-center gap-3">
+          <Button onClick={() => navigate("/app/settings")} className="gap-2" variant="outline">
+            <UserPlus size={18} />
+            {t("invite_member")}
+          </Button>
+        </div>
+      </div>
+
+      <DailyPlanner data={{ contacts, invoices, payments, outreach }} />
+
+      <div className="flex justify-center my-6">
+        <Button 
+          variant="outline" 
+          onClick={() => setShowStats(!showStats)}
+          className="gap-2 rounded-full border-primary/20 text-muted-foreground hover:text-foreground"
+        >
+          {showStats ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {showStats ? t("hide_statistics") || "Hide Statistics & Insights" : t("show_statistics") || "Show Statistics & Insights"}
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                {stat.trend === "up" ? (
-                  <ArrowUpRight className="h-3 w-3 text-green-500" />
-                ) : (
-                  <ArrowDownRight className="h-3 w-3 text-red-500" />
-                )}
-                <span className={stat.trend === "up" ? "text-green-500" : "text-red-500"}>
-                  {stat.change}
-                </span>{" "}
-                {t("from_last_month")}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {showStats && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {stats.map((stat) => (
+              <Card key={stat.title}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                  <stat.icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    {stat.trend === "up" ? (
+                      <ArrowUpRight className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-red-500" />
+                    )}
+                    <span className={stat.trend === "up" ? "text-green-500" : "text-red-500"}>
+                      {stat.change}
+                    </span>{" "}
+                    {t("from_last_month")}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle>{t("revenue_overview")}</CardTitle>
-          </CardHeader>
-          <CardContent className="pl-2">
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="hsl(var(--muted-foreground))" 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false} 
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))" 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tickFormatter={(value) => `$${value}`}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: "hsl(var(--card))", 
-                      borderColor: "hsl(var(--border))",
-                      borderRadius: "8px"
-                    }}
-                  />
-                  <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="col-span-3 space-y-4">
-          {settings?.tier === "pro" ? (
-            <SmartInsights data={{ contacts, invoices, payments, outreach }} />
-          ) : (
-            <Card className="bg-primary/5 border-primary/20">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-primary mb-1">
-                  <Sparkles className="h-4 w-4" />
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider">{t("ai_smart_insights")}</CardTitle>
-                </div>
-                <CardDescription className="text-xs">{t("pro_features_desc")}</CardDescription>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>{t("revenue_overview")}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <Button 
-                  className="w-full text-xs h-8" 
-                  variant="default"
-                  onClick={() => navigate("/app/settings")}
-                >
-                  {t("upgrade_to_pro")}
-                </Button>
+              <CardContent className="pl-2">
+                <div className="h-[300px] w-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="hsl(var(--muted-foreground))" 
+                        fontSize={12} 
+                        tickLine={false} 
+                        axisLine={false} 
+                      />
+                      <YAxis 
+                        stroke="hsl(var(--muted-foreground))" 
+                        fontSize={12} 
+                        tickLine={false} 
+                        axisLine={false} 
+                        tickFormatter={(value) => `${getCurrencySymbol(settings?.currency)}${value}`}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: "hsl(var(--card))", 
+                          borderColor: "hsl(var(--border))",
+                          borderRadius: "8px"
+                        }}
+                        formatter={(value: number) => {
+                          return [formatCurrency(value, settings?.currency), t("revenue")];
+                        }}
+                      />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
-          )}
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("lead_generation")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="hsl(var(--muted-foreground))" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false} 
-                    />
-                    <YAxis 
-                      stroke="hsl(var(--muted-foreground))" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false} 
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "hsl(var(--card))", 
-                        borderColor: "hsl(var(--border))",
-                        borderRadius: "8px"
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="leads" 
-                      stroke="hsl(var(--primary))" 
-                      strokeWidth={2} 
-                      dot={{ fill: "hsl(var(--primary))" }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
+
+            <div className="col-span-3 space-y-4">
+              {settings?.tier === "pro" ? (
+                <SmartInsights data={{ contacts, invoices, payments, outreach }} />
+              ) : (
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2 text-primary mb-1">
+                      <Sparkles className="h-4 w-4" />
+                      <CardTitle className="text-sm font-bold uppercase tracking-wider">{t("ai_smart_insights")}</CardTitle>
+                    </div>
+                    <CardDescription className="text-xs">{t("pro_features_desc")}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button 
+                      className="w-full text-xs h-8" 
+                      variant="default"
+                      onClick={() => navigate("/app/settings")}
+                    >
+                      {t("upgrade_to_pro")}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("lead_generation")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[200px] w-full min-h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="hsl(var(--muted-foreground))" 
+                          fontSize={12} 
+                          tickLine={false} 
+                          axisLine={false} 
+                        />
+                        <YAxis 
+                          stroke="hsl(var(--muted-foreground))" 
+                          fontSize={12} 
+                          tickLine={false} 
+                          axisLine={false} 
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: "hsl(var(--card))", 
+                            borderColor: "hsl(var(--border))",
+                            borderRadius: "8px"
+                          }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="leads" 
+                          stroke="hsl(var(--primary))" 
+                          strokeWidth={2} 
+                          dot={{ fill: "hsl(var(--primary))" }} 
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -18,6 +18,12 @@ interface Contact {
   email: string;
   status: "Active" | "Lead" | "Inactive";
   type: "customer" | "supplier" | "custom";
+  dealValue?: number;
+  probability?: number;
+  leadScore?: {
+    compositeScore: number;
+    priority: "High" | "Medium" | "Low";
+  };
 }
 
 const STAGES = ["Lead", "Active", "Inactive"] as const;
@@ -31,7 +37,9 @@ export default function Pipeline() {
     company: "",
     email: "",
     type: "customer",
-    status: "Lead"
+    status: "Lead",
+    dealValue: 0,
+    probability: 50
   });
 
   const moveContact = async (id: string, newStatus: Contact["status"]) => {
@@ -40,9 +48,9 @@ export default function Pipeline() {
 
   const handleAddDeal = async () => {
     if (!newDeal.name || !newDeal.company) return;
-    await add(newDeal);
+    await add(newDeal as any);
     setIsAddModalOpen(false);
-    setNewDeal({ name: "", company: "", email: "", type: "customer", status: "Lead" });
+    setNewDeal({ name: "", company: "", email: "", type: "customer", status: "Lead", dealValue: 0, probability: 50 });
   };
 
   if (loading) {
@@ -95,8 +103,27 @@ export default function Pipeline() {
                           <div>
                             <p className="font-bold text-sm group-hover:text-primary transition-colors">{contact.name}</p>
                             <p className="text-xs text-muted-foreground">{contact.company}</p>
+                            {contact.leadScore && (
+                              <Badge 
+                                variant="outline" 
+                                className={`mt-1 text-[10px] ${
+                                  contact.leadScore.priority === 'High' ? 'text-green-600 border-green-600/30 bg-green-50/50 dark:bg-green-900/20' : 
+                                  contact.leadScore.priority === 'Medium' ? 'text-amber-600 border-amber-600/30 bg-amber-50/50 dark:bg-amber-900/20' : 
+                                  'text-red-600 border-red-600/30 bg-red-50/50 dark:bg-red-900/20'
+                                }`}
+                              >
+                                {contact.leadScore.priority} ({contact.leadScore.compositeScore})
+                              </Badge>
+                            )}
                           </div>
-                          <Badge variant="outline" className="text-[10px] capitalize">{contact.type}</Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="outline" className="text-[10px] capitalize">{contact.type}</Badge>
+                            {contact.dealValue ? (
+                              <span className="text-xs font-semibold text-green-600 dark:text-green-400">
+                                ${contact.dealValue.toLocaleString()} ({contact.probability || 50}%)
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         
                         <div className="flex items-center justify-between pt-2">
@@ -138,7 +165,7 @@ export default function Pipeline() {
             <div className="space-y-2">
               <Label>{t("contact_name")}</Label>
               <Input 
-                value={newDeal.name || ""}
+                value={newDeal.name ?? ""}
                 onChange={(e) => setNewDeal({ ...newDeal, name: e.target.value })}
                 placeholder="e.g. Jane Doe"
               />
@@ -147,7 +174,7 @@ export default function Pipeline() {
               <Label>{t("email")}</Label>
               <Input 
                 type="email"
-                value={newDeal.email || ""}
+                value={newDeal.email ?? ""}
                 onChange={(e) => setNewDeal({ ...newDeal, email: e.target.value })}
                 placeholder="jane@example.com"
               />
@@ -155,15 +182,37 @@ export default function Pipeline() {
             <div className="space-y-2">
               <Label>{t("company")}</Label>
               <Input 
-                value={newDeal.company || ""}
+                value={newDeal.company ?? ""}
                 onChange={(e) => setNewDeal({ ...newDeal, company: e.target.value })}
                 placeholder="e.g. Acme Corp"
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Deal Value ($)</Label>
+                <Input 
+                  type="number"
+                  value={newDeal.dealValue || ""}
+                  onChange={(e) => setNewDeal({ ...newDeal, dealValue: Number(e.target.value) })}
+                  placeholder="e.g. 5000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Probability (%)</Label>
+                <Input 
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newDeal.probability || ""}
+                  onChange={(e) => setNewDeal({ ...newDeal, probability: Number(e.target.value) })}
+                  placeholder="e.g. 50"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>{t("pipeline_stage")}</Label>
               <Select 
-                value={newDeal.status} 
+                value={newDeal.status ?? ""} 
                 onValueChange={(val: any) => setNewDeal({ ...newDeal, status: val })}
               >
                 <SelectTrigger>

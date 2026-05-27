@@ -194,7 +194,7 @@ export default function Quotes() {
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -297,7 +297,7 @@ export default function Quotes() {
                 <Label htmlFor="quoteNumber">{t("quote_number")}</Label>
                 <Input
                   id="quoteNumber"
-                  value={formData.quoteNumber}
+                  value={formData.quoteNumber ?? ""}
                   onChange={(e) => setFormData({ ...formData, quoteNumber: e.target.value })}
                   required
                 />
@@ -305,7 +305,7 @@ export default function Quotes() {
               <div className="grid gap-2">
                 <Label htmlFor="customer">{t("customer")}</Label>
                 <Select
-                  value={formData.customerId}
+                  value={formData.customerId ?? ""}
                   onValueChange={(value) => setFormData({ ...formData, customerId: value })}
                   required
                 >
@@ -325,7 +325,7 @@ export default function Quotes() {
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  value={formData.amount ?? ""}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
                   required
                 />
@@ -333,7 +333,7 @@ export default function Quotes() {
               <div className="grid gap-2">
                 <Label htmlFor="productType">{t("product_type")}</Label>
                 <Select
-                  value={formData.productType}
+                  value={formData.productType ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, productType: value })}
                   required
                 >
@@ -353,7 +353,7 @@ export default function Quotes() {
                 <Input
                   id="date"
                   type="date"
-                  value={formData.date}
+                  value={formData.date ?? ""}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
@@ -363,7 +363,7 @@ export default function Quotes() {
                 <Input
                   id="expiry"
                   type="date"
-                  value={formData.expiry}
+                  value={formData.expiry ?? ""}
                   onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
                   required
                 />
@@ -371,7 +371,7 @@ export default function Quotes() {
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>

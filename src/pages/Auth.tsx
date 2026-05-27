@@ -1,23 +1,36 @@
 import { useState, FormEvent, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/AuthContext";
+import { useLanguage } from "@/lib/i18n";
 import { Loader2, Mail, Lock, User, Chrome } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function Auth() {
+  const { t } = useLanguage();
+  const [searchParams] = useSearchParams();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn, signInWithEmail, signUpWithEmail, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
+  const handleNavigatePostAuth = () => {
+    const plan = searchParams.get("plan");
+    if (plan) {
+      // Redirect to settings so they can configure integrations/payment for their plan
+      navigate(`/app/settings?plan=${plan}`);
+    } else {
+      navigate("/app");
+    }
+  };
+
   useEffect(() => {
     if (!authLoading && user) {
-      navigate("/app");
+      handleNavigatePostAuth();
     }
   }, [user, authLoading, navigate]);
 
@@ -32,7 +45,7 @@ export default function Auth() {
     setError(null);
     try {
       await signIn();
-      navigate("/app");
+      handleNavigatePostAuth();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -50,7 +63,7 @@ export default function Auth() {
       } else {
         await signUpWithEmail(formData.email, formData.password, formData.name);
       }
-      navigate("/app");
+      handleNavigatePostAuth();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -95,7 +108,7 @@ export default function Auth() {
                         id="name"
                         placeholder="John Doe"
                         className="pl-10"
-                        value={formData.name}
+                        value={formData.name ?? ""}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         required={!isLogin}
                       />
@@ -113,7 +126,7 @@ export default function Auth() {
                     type="email"
                     placeholder="name@example.com"
                     className="pl-10"
-                    value={formData.email}
+                    value={formData.email ?? ""}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
                   />
@@ -129,7 +142,7 @@ export default function Auth() {
                     type="password"
                     placeholder="••••••••"
                     className="pl-10"
-                    value={formData.password}
+                    value={formData.password ?? ""}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
                   />

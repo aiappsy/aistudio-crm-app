@@ -1,4 +1,5 @@
-import { Search, Bell, User, LogOut, LogIn, Languages, HelpCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, Bell, User, LogOut, LogIn, Languages, HelpCircle, Mic, MicOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -6,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/AuthContext";
 import { useLanguage, Language } from "@/lib/i18n";
 import HelpModal from "@/components/HelpModal";
+import NotificationBell from "@/components/NotificationBell";
+import { useVoice } from "@/lib/VoiceContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,8 +19,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function Header() {
+  const navigate = useNavigate();
   const { user, signIn, logout } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const { voiceMode, setVoiceMode } = useVoice();
 
   const languages: { code: Language; label: string; flag: string }[] = [
     { code: "en", label: "English", flag: "🇺🇸" },
@@ -42,8 +47,10 @@ export default function Header() {
       <div className="flex items-center gap-4">
         <DropdownMenu>
           <DropdownMenuTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
-            <Languages size={18} />
-            <span className="hidden sm:inline">{languages.find(l => l.code === language)?.label}</span>
+            <div className="flex items-center gap-2">
+              <Languages size={18} />
+              <span className="hidden sm:inline">{languages.find(l => l.code === language)?.label}</span>
+            </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {languages.map((lang) => (
@@ -59,16 +66,23 @@ export default function Header() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => setVoiceMode(!voiceMode)}
+          className={cn("relative", voiceMode && "text-primary bg-primary/10")}
+          title={voiceMode ? "Voice Mode Active" : "Enable Voice Mode"}
+        >
+          {voiceMode ? <Mic size={20} /> : <MicOff size={20} className="opacity-50" />}
+        </Button>
+
         <HelpModal />
 
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell size={20} />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-destructive rounded-full border-2 border-card"></span>
-        </Button>
+        <NotificationBell />
 
         {user ? (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "rounded-full overflow-hidden")}>
+            <DropdownMenuTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "rounded-full overflow-hidden shrink-0")}>
               {user.photoURL ? (
                 <img src={user.photoURL} alt={user.displayName || "User"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -78,14 +92,13 @@ export default function Header() {
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>
-                <div className="flex flex-col">
+              <div className="flex flex-col px-2 py-1.5 text-sm font-medium">
                   <span>{user.displayName}</span>
                   <span className="text-xs font-normal text-muted-foreground">{user.email}</span>
-                </div>
-              </DropdownMenuLabel>
+              </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => window.location.href = "/app/settings"}>{t("settings")}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/app/profile")}>{t("profile")}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/app/settings")}>{t("settings")}</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={() => logout()}>
                 <LogOut className="mr-2 h-4 w-4" />

@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0991877290",
-  "appId": "1:407788493977:web:6282ee2eb41d070b29ac08",
-  "apiKey": "AIzaSyC6WqN8pSMQ4GluhMSRqdPbQNfCwKMM6cE",
-  "authDomain": "gen-lang-client-0991877290.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-15a8498e-b174-4ab5-a15e-b0aed8fd58c2",
-  "storageBucket": "gen-lang-client-0991877290.firebasestorage.app",
-  "messagingSenderId": "407788493977",
-  "measurementId": ""
+  "projectId": "bizmaster-abfed",
+  "appId": "1:910579541086:web:fc6f6d4b3e8811d56f80cf",
+  "apiKey": "AIzaSyBuSRj8GavUFeZAU0pXNEBZJbDrSJsdHhk",
+  "authDomain": "bizmaster-abfed.firebaseapp.com",
+  "storageBucket": "bizmaster-abfed.firebasestorage.app",
+  "messagingSenderId": "910579541086",
+  "measurementId": "",
+  "firestoreDatabaseId": "ai-studio-15a8498e-b174-4ab5-a15e-b0aed8fd58c2"
 }

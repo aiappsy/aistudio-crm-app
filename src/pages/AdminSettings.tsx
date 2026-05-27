@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/lib/i18n";
-import { useFirestoreDoc, useFirestoreCollection } from "@/lib/useFirestore";
+import { useFirestoreDoc, useFirestoreCollection, useFirestoreQuery } from "@/lib/useFirestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, ShieldAlert, Send, Users, CreditCard, Settings2, Rocket } from "lucide-react";
@@ -19,6 +19,11 @@ interface GlobalConfig {
     free: { price: number; memberLimit: number; aiTokens: number };
     pro: { price: number; memberLimit: number; aiTokens: number };
     enterprise: { price: number; memberLimit: number; aiTokens: number };
+  };
+  tokenPackages?: {
+    small: { name: string; tokens: number; price: number };
+    medium: { name: string; tokens: number; price: number };
+    large: { name: string; tokens: number; price: number };
   };
   tokenPrice?: number;
   paymentProviders?: {
@@ -38,13 +43,18 @@ export default function AdminSettings() {
   const { user } = useAuth();
   const { data: config, loading, set: saveConfig } = useFirestoreDoc<GlobalConfig>("global_config", "main");
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
-  const { data: usersList, loading: loadingUsers } = useFirestoreCollection<any>("users");
+  const { data: usersList, loading: loadingUsers } = useFirestoreQuery<any>("users", []);
   
   const [formData, setFormData] = useState<GlobalConfig>({
     tiers: {
-      free: { price: 0, memberLimit: 1, aiTokens: 10 },
-      pro: { price: 19, memberLimit: 5, aiTokens: 20 },
-      enterprise: { price: 49, memberLimit: 9999, aiTokens: 9999 },
+      free: { price: 0, memberLimit: 1, aiTokens: 30 },
+      pro: { price: 29, memberLimit: 5, aiTokens: 200 },
+      enterprise: { price: 79, memberLimit: 100, aiTokens: 1000 },
+    },
+    tokenPackages: {
+      small: { name: "Starter Refill", tokens: 100, price: 5 },
+      medium: { name: "Pro Refill", tokens: 500, price: 20 },
+      large: { name: "Power Refill", tokens: 2000, price: 60 },
     },
     tokenPrice: 1.5,
     paymentProviders: { stripePublicKey: "", stripeSecretKey: "", paypalClientId: "" },
@@ -65,6 +75,7 @@ export default function AdminSettings() {
     if (config) {
       setFormData({
         tiers: config.tiers || formData.tiers,
+        tokenPackages: config.tokenPackages || formData.tokenPackages,
         tokenPrice: config.tokenPrice || formData.tokenPrice,
         paymentProviders: config.paymentProviders || formData.paymentProviders,
         systemApis: config.systemApis || formData.systemApis
@@ -157,7 +168,7 @@ export default function AdminSettings() {
                     <label className="text-sm font-medium">{t("monthly_price") || "Monthly Price ($)"}</label>
                     <Input 
                       type="number"
-                      value={formData.tiers[tier].price} 
+                      value={formData.tiers?.[tier as keyof typeof formData.tiers]?.price ?? ""} 
                       onChange={e => setFormData({
                         ...formData,
                         tiers: {
@@ -171,7 +182,7 @@ export default function AdminSettings() {
                     <label className="text-sm font-medium">{t("team_member_limit") || "Team Member Limit"}</label>
                     <Input 
                       type="number"
-                      value={formData.tiers[tier].memberLimit} 
+                      value={formData.tiers?.[tier as keyof typeof formData.tiers]?.memberLimit ?? ""} 
                       onChange={e => setFormData({
                         ...formData,
                         tiers: {
@@ -185,7 +196,7 @@ export default function AdminSettings() {
                     <label className="text-sm font-medium">{t("included_ai_tokens_mo") || "Included AI Tokens/mo"}</label>
                     <Input 
                       type="number"
-                      value={formData.tiers[tier].aiTokens} 
+                      value={formData.tiers?.[tier as keyof typeof formData.tiers]?.aiTokens ?? ""} 
                       onChange={e => setFormData({
                         ...formData,
                         tiers: {
@@ -202,22 +213,69 @@ export default function AdminSettings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t("ai_token_pricing") || "AI Token Pricing"}</CardTitle>
-              <CardDescription>Set the price for purchasing additional AI tokens (1 token = 1 hour of use).</CardDescription>
+              <CardTitle>Token Packages</CardTitle>
+              <CardDescription>Configure packages for users to purchase additional AI actions.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 max-w-2xl">
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Price per Token ($)</label>
-                <Input 
-                  type="number"
-                  step="0.1"
-                  value={formData.tokenPrice} 
-                  onChange={e => setFormData({
-                    ...formData,
-                    tokenPrice: Number(e.target.value)
-                  })}
-                />
-              </div>
+              {['small', 'medium', 'large'].map((pkg) => {
+                const p = formData.tokenPackages?.[pkg as keyof typeof formData.tokenPackages];
+                // Estimate: $0.00015 per task (API cost)
+                const estimatedCost = (p?.tokens || 0) * 0.00015;
+                const margin = p?.price && p.price > 0 ? ((p.price - estimatedCost) / p.price * 100).toFixed(1) : "0.0";
+                
+                return (
+                <div key={pkg} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end border-b pb-4 last:border-0 last:pb-0">
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Package {pkg}</label>
+                    <Input 
+                      placeholder="Name"
+                      value={formData.tokenPackages?.[pkg as keyof typeof formData.tokenPackages]?.name ?? ""} 
+                      onChange={e => setFormData({
+                        ...formData,
+                        tokenPackages: {
+                          ...formData.tokenPackages,
+                          [pkg]: { ...formData.tokenPackages![pkg as keyof typeof formData.tokenPackages], name: e.target.value }
+                        } as any
+                      })}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Tokens</label>
+                    <Input 
+                      type="number"
+                      value={formData.tokenPackages?.[pkg as keyof typeof formData.tokenPackages]?.tokens ?? ""} 
+                      onChange={e => setFormData({
+                        ...formData,
+                        tokenPackages: {
+                          ...formData.tokenPackages,
+                          [pkg]: { ...formData.tokenPackages![pkg as keyof typeof formData.tokenPackages], tokens: Number(e.target.value) }
+                        } as any
+                      })}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Price ($)</label>
+                    <Input 
+                      type="number"
+                      step="0.1"
+                      value={formData.tokenPackages?.[pkg as keyof typeof formData.tokenPackages]?.price ?? ""} 
+                      onChange={e => setFormData({
+                        ...formData,
+                        tokenPackages: {
+                          ...formData.tokenPackages,
+                          [pkg]: { ...formData.tokenPackages![pkg as keyof typeof formData.tokenPackages], price: Number(e.target.value) }
+                        } as any
+                      })}
+                    />
+                  </div>
+                  <div className="grid gap-2 pb-2">
+                    <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                      <span>Est. Cost: ${estimatedCost.toFixed(3)}</span>
+                      <strong className="text-green-600 dark:text-green-400">Margin: {margin}%</strong>
+                    </div>
+                  </div>
+                </div>
+              )})}
             </CardContent>
           </Card>
 
@@ -232,7 +290,7 @@ export default function AdminSettings() {
                 <Input 
                   type="text"
                   placeholder="Enter your PayPal Client ID"
-                  value={formData.paymentProviders?.paypalClientId || ""} 
+                  value={formData.paymentProviders?.paypalClientId ?? ""} 
                   onChange={e => setFormData({
                     ...formData,
                     paymentProviders: { ...formData.paymentProviders, paypalClientId: e.target.value }
@@ -244,7 +302,7 @@ export default function AdminSettings() {
                 <Input 
                   type="password"
                   placeholder="Enter your PayPal Secret"
-                  value={formData.paymentProviders?.paypalSecretKey || ""} 
+                  value={formData.paymentProviders?.paypalSecretKey ?? ""} 
                   onChange={e => setFormData({
                     ...formData,
                     paymentProviders: { ...formData.paymentProviders, paypalSecretKey: e.target.value }
@@ -321,7 +379,7 @@ export default function AdminSettings() {
                 <Input 
                   type="password"
                   placeholder="AIzaSy..."
-                  value={formData.systemApis?.geminiApiKey || ""} 
+                  value={formData.systemApis?.geminiApiKey ?? ""} 
                   onChange={e => setFormData({
                     ...formData,
                     systemApis: { ...formData.systemApis, geminiApiKey: e.target.value }
@@ -334,7 +392,7 @@ export default function AdminSettings() {
                 <Input 
                   type="password"
                   placeholder="sk-..."
-                  value={formData.systemApis?.openaiApiKey || ""} 
+                  value={formData.systemApis?.openaiApiKey ?? ""} 
                   onChange={e => setFormData({
                     ...formData,
                     systemApis: { ...formData.systemApis, openaiApiKey: e.target.value }

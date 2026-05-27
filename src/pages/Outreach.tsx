@@ -44,7 +44,8 @@ export default function Outreach() {
     customerId: "",
     platform: "Email" as "Email" | "WhatsApp",
     subject: "",
-    message: ""
+    message: "",
+    scheduledAt: null as Date | null
   });
 
   const handleDraft = async () => {
@@ -63,10 +64,16 @@ export default function Outreach() {
       });
 
       if (draft) {
+        // AI selects optimal time (e.g. tomorrow at 10 AM local time for demo purposes)
+        const optimalTime = new Date();
+        optimalTime.setDate(optimalTime.getDate() + 1);
+        optimalTime.setHours(10, 0, 0, 0);
+
         setNewOutreach({
           ...newOutreach,
           subject: draft.subject || newOutreach.subject,
-          message: draft.message
+          message: draft.message,
+          scheduledAt: optimalTime
         });
       }
     } catch (error) {
@@ -137,7 +144,7 @@ export default function Outreach() {
     });
     
     setIsDialogOpen(false);
-    setNewOutreach({ customerId: "", platform: "Email", subject: "", message: "" });
+    setNewOutreach({ customerId: "", platform: "Email", subject: "", message: "", scheduledAt: null });
   };
 
   return (
@@ -160,7 +167,7 @@ export default function Outreach() {
               <div className="grid gap-2">
                 <Label htmlFor="customer">{t("customer")}</Label>
                 <Select 
-                  value={newOutreach.customerId} 
+                  value={newOutreach.customerId ?? ""} 
                   onValueChange={(val) => setNewOutreach({...newOutreach, customerId: val})}
                 >
                   <SelectTrigger>
@@ -176,7 +183,7 @@ export default function Outreach() {
               <div className="grid gap-2">
                 <Label htmlFor="platform">{t("platform")}</Label>
                 <Select 
-                  value={newOutreach.platform} 
+                  value={newOutreach.platform ?? ""} 
                   onValueChange={(val: any) => setNewOutreach({...newOutreach, platform: val})}
                 >
                   <SelectTrigger>
@@ -193,7 +200,7 @@ export default function Outreach() {
                   <Label htmlFor="subject">{t("subject")}</Label>
                   <Input 
                     id="subject" 
-                    value={newOutreach.subject} 
+                    value={newOutreach.subject ?? ""} 
                     onChange={(e) => setNewOutreach({...newOutreach, subject: e.target.value})}
                   />
                 </div>
@@ -215,15 +222,30 @@ export default function Outreach() {
                 <Textarea 
                   id="message" 
                   rows={5}
-                  value={newOutreach.message} 
+                  value={newOutreach.message ?? ""} 
                   onChange={(e) => setNewOutreach({...newOutreach, message: e.target.value})}
                 />
               </div>
+              
+              {newOutreach.scheduledAt && (
+                <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-500/10 p-2 rounded-md">
+                   <Sparkles className="h-4 w-4" />
+                   <span>AI suggests optimal send time: <strong>{newOutreach.scheduledAt.toLocaleString()}</strong></span>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>{t("cancel")}</Button>
-              <Button onClick={handleSend} disabled={!newOutreach.customerId || !newOutreach.message}>
-                {t("send_message")}
+              {newOutreach.scheduledAt && (
+                 <Button variant="secondary" onClick={() => handleSend()}>
+                   Schedule Send
+                 </Button>
+              )}
+              <Button onClick={() => {
+                setNewOutreach({...newOutreach, scheduledAt: null});
+                handleSend();
+              }} disabled={!newOutreach.customerId || !newOutreach.message}>
+                {t("send_message") || "Send Now"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -274,7 +296,7 @@ export default function Outreach() {
                 <Input
                   placeholder={t("search_history")}
                   className="pl-9 w-[200px] md:w-[300px]"
-                  value={searchTerm}
+                  value={searchTerm ?? ""}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>

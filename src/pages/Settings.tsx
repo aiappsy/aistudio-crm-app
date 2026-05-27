@@ -5,12 +5,13 @@ import { Separator } from "@/components/ui/separator";
 import { useLanguage } from "@/lib/i18n";
 import { useFirestoreDoc, useFirestoreQuery } from "@/lib/useFirestore";
 import { useAuth } from "@/lib/AuthContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2, Mail, Globe, Sparkles, UserPlus, Trash2, Clock, CreditCard, Coins } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, convertBasePrice } from "@/lib/utils";
 import { db, handleFirestoreError, OperationType } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
 interface UserSettings {
   companyName: string;
@@ -27,6 +28,16 @@ interface UserSettings {
   currency: string;
   aiModel: string;
   tier: "free" | "pro" | "enterprise";
+  leadScoringFramework?: "BANT" | "MEDDIC" | "CHAMP";
+  leadScoringWeights?: any;
+  brandVoice?: {
+    tone: string;
+    formalityLevel: number;
+    greetingPreference: string;
+    closingPreference: string;
+    prohibitedPhrases: string;
+  };
+  autopilotEnabled?: boolean;
 }
 
 export default function Settings() {
@@ -35,7 +46,7 @@ export default function Settings() {
   const { data: settings, loading, set: saveSettings } = useFirestoreDoc<UserSettings>("settings", user?.uid);
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
   const { data: teamMembers } = useFirestoreQuery<any>("users", [where("organizationId", "==", userProfile?.organizationId || "none")]);
-  const { data: invitations } = useFirestoreQuery<any>("invitations", [where("organizationId", "==", userProfile?.organizationId || "none"), where("status", "==", "pending")]);
+  const { data: invitations } = useFirestoreQuery<any>("invitations", [where("invitedBy", "==", user?.uid || "none"), where("status", "==", "pending")]);
   
   const [formData, setFormData] = useState<UserSettings>({
     companyName: "",
@@ -50,8 +61,17 @@ export default function Settings() {
     smtpPass: "",
     vatRegion: "NO",
     currency: "USD",
-    aiModel: "gemini-3-flash-preview",
+    aiModel: "gemini-2.5-flash",
     tier: "free",
+    leadScoringFramework: "BANT",
+    leadScoringWeights: { Budget: 25, Authority: 25, Need: 30, Timeline: 20 },
+    brandVoice: {
+      tone: "Professional",
+      formalityLevel: 3,
+      greetingPreference: "Hi [Name]",
+      closingPreference: "Best regards",
+      prohibitedPhrases: ""
+    }
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -59,15 +79,37 @@ export default function Settings() {
   const [inviting, setInviting] = useState(false);
 
   const { data: globalConfig } = useFirestoreDoc<any>("global_config", "main");
-  const [buyingTokens, setBuyingTokens] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const subscriptionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let baseData = { ...formData };
     if (settings) {
-      setFormData(settings);
+      baseData = { ...settings };
     } else if (user) {
-      setFormData(prev => ({ ...prev, email: user.email || "" }));
+      baseData.email = user.email || "";
     }
-  }, [settings, user]);
+    
+    const plan = searchParams.get("plan");
+    if (plan && ["free", "pro", "enterprise"].includes(plan)) {
+      baseData.tier = plan as UserSettings["tier"];
+      searchParams.delete("plan");
+      setSearchParams(searchParams);
+      
+      // Attempt to scroll to Subscription settings
+      setTimeout(() => {
+        subscriptionRef.current?.scrollIntoView({ behavior: 'smooth' });
+        // Simulate immediate checkout for paid plans
+        if (plan !== "free") {
+            // Because there's no actual subscription checkout endpoint right now, we simulate with an alert per instructions
+            alert(`Initiating Stripe checkout for ${plan.toUpperCase()} plan!`);
+        }
+      }, 500);
+    }
+    
+    setFormData(baseData);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, user, searchParams]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -81,13 +123,17 @@ export default function Settings() {
     if (!inviteEmail || !userProfile?.organizationId) return;
     
     // Check limit
-    let limit = globalConfig?.tiers?.[formData.tier]?.memberLimit;
+    const currentTier = formData.tier || settings?.tier || userProfile?.tier || (userProfile?.role === "super_admin" ? "enterprise" : "free");
+    let limit = globalConfig?.tiers?.[currentTier]?.memberLimit;
     if (!limit) {
-      limit = formData.tier === "enterprise" ? 9999 : (formData.tier === "pro" ? 5 : 1);
+      limit = currentTier === "enterprise" ? 9999 : (currentTier === "pro" ? 5 : 1);
     }
 
     if (teamMembers.length + invitations.length >= limit) {
-      alert(t("member_limit_reached"));
+      const event = new CustomEvent("trigger-ai-assistant", { 
+        detail: { prompt: `I tried to invite a member but my tier (${currentTier}) member limit of ${limit} has been reached. Please explain this to me and suggest upgrading my plan.` } 
+      });
+      window.dispatchEvent(event);
       return;
     }
 
@@ -118,6 +164,108 @@ export default function Settings() {
     }
   };
 
+  const seedMockData = async () => {
+    if (!user?.uid) return;
+    setSaving(true);
+    try {
+      // 4 Mock Customers
+      const customerNames = ["Hugh Jass", "Anita Bath", "Seymour Butz", "Eileen Dover"];
+      const customerDocs = [];
+      for (const name of customerNames) {
+        const docRef = await addDoc(collection(db, "contacts"), {
+          name,
+          email: `${name.replace(" ", ".").toLowerCase()}@funny.mock`,
+          phone: "+1 555-0192",
+          company: "Mock Inc",
+          status: "Active",
+          type: "customer",
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        customerDocs.push({ id: docRef.id, name });
+      }
+
+      // Add one incomplete contact
+      await addDoc(collection(db, "contacts"), {
+        name: "Incomplete Ian",
+        status: "Lead",
+        type: "customer",
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      // Add a duplicate pair
+      await addDoc(collection(db, "contacts"), {
+        name: "Duplicate Dan",
+        email: "dan@duplicate.com",
+        phone: "+1 222-3333",
+        company: "Duplicate Corp",
+        status: "Lead",
+        type: "customer",
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, "contacts"), {
+        name: "Duplicate Danny",
+        email: "dan@duplicate.com", // Exact email match (50 points)
+        phone: "+1 222-3333", // Exact phone match (30 points)
+        company: "Duplicate Corporation", // High similarity company
+        status: "Lead",
+        type: "customer",
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      
+      // Add an inconsistency
+      await addDoc(collection(db, "contacts"), {
+        name: "Mismatch Mary",
+        email: "mary@example.org",
+        company: "Google", // Mismatched domain
+        status: "Active",
+        type: "customer",
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      // 2 Mock Products
+      const products = [
+        { name: "SaaS Premium License", price: 299, category: "Software", stockLevel: 999, status: "Available" },
+        { name: "Cloud Storage 1TB", price: 49, category: "Software", stockLevel: 999, status: "Available" }
+      ];
+      for (const prod of products) {
+        await addDoc(collection(db, "products"), {
+          ...prod,
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      // 1 Pending Invoice
+      if (customerDocs.length > 0) {
+        await addDoc(collection(db, "invoices"), {
+          customerId: customerDocs[0].id,
+          customerName: customerDocs[0].name,
+          amount: 299,
+          status: "Pending",
+          invoiceNumber: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
+          date: new Date().toISOString(),
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      alert("Mock data successfully seeded!");
+    } catch (error) {
+      alert("Failed to seed mock data. Please try again.");
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const useGmailDefaults = () => {
     setFormData({
       ...formData,
@@ -125,15 +273,6 @@ export default function Settings() {
       smtpPort: "587",
       smtpUser: user?.email || "",
     });
-  };
-
-  const handleBuyTokens = async () => {
-    // Placeholder for Stripe integration
-    setBuyingTokens(true);
-    setTimeout(() => {
-      alert("This would open a Stripe checkout to purchase tokens at $" + (globalConfig?.tokenPrice || 1.5) + " per token.");
-      setBuyingTokens(false);
-    }, 1000);
   };
 
   if (loading) {
@@ -146,19 +285,35 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t("settings")}</h1>
           <p className="text-muted-foreground">{t("settings_desc")}</p>
         </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (saved ? <CheckCircle2 className="h-4 w-4" /> : null)}
-          {t("save_changes")}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button 
+            variant="outline" 
+            onClick={async () => {
+              try {
+                if (user) {
+                  await updateDoc(doc(db, "users", user.uid), { onboardingCompleted: false });
+                }
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          >
+            Re-run Setup Wizard
+          </Button>
+          <Button onClick={handleSave} disabled={saving} className="gap-2">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (saved ? <CheckCircle2 className="h-4 w-4" /> : null)}
+            {t("save_changes")}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6">
-        <Card>
+        <Card ref={subscriptionRef}>
           <CardHeader>
             <CardTitle>{t("subscription_tier")} & Tokens</CardTitle>
             <CardDescription>{t("manage_plan_ai") || "Manage your plan and AI token balance."}</CardDescription>
@@ -172,70 +327,133 @@ export default function Settings() {
                 )}
                 onClick={() => setFormData({ ...formData, tier: "free" })}
               >
-                <p className="font-bold text-lg">{t("free_tier")}</p>
-                <p className="text-sm text-muted-foreground">{globalConfig?.tiers?.free?.memberLimit || 1} User, {globalConfig?.tiers?.free?.aiTokens || 10} AI Tokens/mo.</p>
-                <div className="mt-4">
-                  <span className="text-2xl font-bold">${globalConfig?.tiers?.free?.price || 0}</span>
-                  <span className="text-sm text-muted-foreground">/mo</span>
+                <p className="font-bold text-lg">{t("free_plan")}</p>
+                <div className="mt-4 mb-4">
+                  <span className="text-2xl font-bold">{formatCurrency((convertBasePrice(globalConfig?.tiers?.free?.price || 0, formData.currency)), formData.currency)}</span>
+                  <span className="text-sm text-muted-foreground">{t("monthly") || "/mo"}</span>
+                </div>
+                <div className="space-y-2 mt-4 mt-auto">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{globalConfig?.tiers?.free?.memberLimit || 1} {t("user_singular") || "User"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{globalConfig?.tiers?.free?.aiTokens || 30} {t("ai_actions_mo") || "AI Actions/month"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{t("basic_crm_features") || "Basic CRM Features"}</span>
+                  </div>
                 </div>
               </div>
               <div 
                 className={cn(
-                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative overflow-hidden",
-                  formData.tier === "pro" ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative overflow-hidden flex flex-col",
+                  formData.tier === "pro" ? "border-primary bg-primary/5 shadow-sm" : "border-muted hover:border-primary/50"
                 )}
                 onClick={() => setFormData({ ...formData, tier: "pro" })}
               >
                 <div className="absolute top-2 right-2">
                   <Sparkles className="h-5 w-5 text-primary animate-pulse" />
                 </div>
-                <p className="font-bold text-lg">{t("pro_tier")}</p>
-                <p className="text-sm text-muted-foreground">{t("up_to_users") || "Up to"} {globalConfig?.tiers?.pro?.memberLimit || 5} {t("users") || "Users"}, {globalConfig?.tiers?.pro?.aiTokens || 20} AI Tokens/mo.</p>
-                <div className="mt-4">
-                  <span className="text-2xl font-bold">${globalConfig?.tiers?.pro?.price || 19}</span>
-                  <span className="text-sm text-muted-foreground">/mo</span>
+                <p className="font-bold text-lg">{t("pro_plan")}</p>
+                <div className="mt-4 mb-4">
+                  <span className="text-2xl font-bold">{formatCurrency((convertBasePrice(globalConfig?.tiers?.pro?.price || 29, formData.currency)), formData.currency)}</span>
+                  <span className="text-sm text-muted-foreground">{t("monthly") || "/mo"}</span>
                 </div>
-                <p className="text-[10px] mt-2 text-primary font-medium italic">{t("byok_desc")}</p>
+                <div className="space-y-2 mt-4 mt-auto">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{t("up_to_users") || "Up to"} {globalConfig?.tiers?.pro?.memberLimit || 5} {t("users") || "Users"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{globalConfig?.tiers?.pro?.aiTokens || 200} {t("ai_actions_mo") || "AI Actions/month"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{t("automated_outreach") || "Advanced Automated Outreach"}</span>
+                  </div>
+                </div>
+                <p className="text-[10px] mt-4 text-primary font-medium italic">{t("byok_standard")}</p>
               </div>
               <div 
                 className={cn(
-                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative overflow-hidden",
-                  formData.tier === "enterprise" ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative overflow-hidden flex flex-col",
+                  formData.tier === "enterprise" ? "border-primary bg-primary/5 shadow-sm" : "border-muted hover:border-primary/50"
                 )}
                 onClick={() => setFormData({ ...formData, tier: "enterprise" })}
               >
                 <div className="absolute top-2 right-2">
                   <Sparkles className="h-5 w-5 text-primary animate-pulse" />
                 </div>
-                <p className="font-bold text-lg">Enterprise</p>
-                <p className="text-sm text-muted-foreground">Unlimited Users, Unlimited Tokens.</p>
-                <div className="mt-4">
-                  <span className="text-2xl font-bold">${globalConfig?.tiers?.enterprise?.price || 49}</span>
-                  <span className="text-sm text-muted-foreground">/mo</span>
+                <p className="font-bold text-lg">{t("enterprise_plan") || "Enterprise"}</p>
+                <div className="mt-4 mb-4">
+                  <span className="text-2xl font-bold">{formatCurrency((convertBasePrice(globalConfig?.tiers?.enterprise?.price || 79, formData.currency)), formData.currency)}</span>
+                  <span className="text-sm text-muted-foreground">{t("monthly") || "/mo"}</span>
                 </div>
-                <p className="text-[10px] mt-2 text-primary font-medium italic">{t("byok_desc")}</p>
+                <div className="space-y-2 mt-4 mt-auto">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{globalConfig?.tiers?.enterprise?.memberLimit || 100} {t("users")}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{globalConfig?.tiers?.enterprise?.aiTokens || 1000} {t("ai_actions_mo") || "AI Actions/month"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-primary" />
+                    <span>{t("dedicated_manager") || "Dedicated Account Manager"}</span>
+                  </div>
+                </div>
+                <p className="text-[10px] mt-4 text-primary font-medium italic">{t("byok_standard")}</p>
               </div>
             </div>
 
             <Separator />
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-xl border border-border/50">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-muted/30 rounded-xl border border-border/50">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Coins className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="font-semibold text-lg">{t("ai_token_balance") || "AI Token Balance"}</p>
+                  <p className="font-semibold text-lg">{t("ai_token_balance") || "AI Action Balance"}</p>
                   <p className="text-sm text-muted-foreground">
-                    {userProfile?.aiTokens || 0} tokens remaining (1 token = 1 hour of AI use)
+                    {userProfile?.aiTokens || 0} {t("tokens_remaining") || "actions remaining."}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2 max-w-sm leading-relaxed border-l-2 border-primary/20 pl-2">
+                    <strong className="text-foreground">{t("what_is_token")}</strong> {t("token_explanation")}
                   </p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <Button variant="outline" onClick={handleBuyTokens} disabled={buyingTokens}>
-                  {buyingTokens ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                  Buy Tokens (${globalConfig?.tokenPrice || 1.5}/ea)
-                </Button>
+            </div>
+
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold mb-3">Get more AI Actions</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {['small', 'medium', 'large'].map((pk) => {
+                  const p = globalConfig?.tokenPackages?.[pk];
+                  if (!p) return null;
+                  return (
+                    <div key={pk} className="border border-border/50 rounded-lg p-4 flex flex-col items-center text-center bg-card shadow-sm">
+                      <p className="font-semibold text-sm">{p.name || `${pk} Package`}</p>
+                      <p className="text-2xl font-bold my-2 text-primary">{p.tokens}</p>
+                      <p className="text-xs text-muted-foreground mb-4">actions</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full mt-auto"
+                        onClick={() => {
+                          alert(`This would open a Stripe checkout for $${p.price} to get ${p.tokens} tokens.`);
+                        }}
+                      >
+                        {formatCurrency(convertBasePrice(p.price, formData.currency), formData.currency)}
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </CardContent>
@@ -307,7 +525,7 @@ export default function Settings() {
               <div className="flex gap-2">
                 <Input 
                   placeholder="colleague@example.com" 
-                  value={inviteEmail}
+                  value={inviteEmail ?? ""}
                   onChange={(e) => setInviteEmail(e.target.value)}
                 />
                 <Button 
@@ -327,42 +545,192 @@ export default function Settings() {
         <Card>
           <CardHeader>
             <CardTitle>{t("ai_configuration_byok") || "AI Configuration (BYOK)"}</CardTitle>
-            <CardDescription>Configure your own Gemini API key and select your preferred AI model.</CardDescription>
+            <CardDescription>{t("ai_config_byok_desc") || "Configure your own Gemini API key and select your preferred AI model."}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("gemini_api_key")}</label>
               <Input 
                 type="password"
-                value={formData.geminiApiKey} 
+                value={formData.geminiApiKey ?? ""} 
                 onChange={e => setFormData({ ...formData, geminiApiKey: e.target.value })}
                 placeholder="AIzaSy..." 
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Don't have an API key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">{t("get_free_gemini_key") || "Get a free Gemini API key from Google AI Studio"}</a>.
+                {t("dont_have_api_key")} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">{t("get_free_gemini_key") || "Get a free Gemini API key from Google AI Studio"}</a>.
               </p>
             </div>
             
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("ai_model")}</label>
               <Select 
-                value={formData.aiModel || "gemini-3-flash-preview"} 
+                value={formData.aiModel || "gemini-2.5-flash"} 
                 onValueChange={(val: string) => setFormData({ ...formData, aiModel: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select AI Model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview (Default)</SelectItem>
                   <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                  <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                  <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                  <SelectItem value="gemini-2.0-pro-exp">Gemini 2.0 Pro Experimental</SelectItem>
+                  <SelectItem value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</SelectItem>
+                  <SelectItem value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
                 {t("ai_model_desc")}
+                {formData.aiModel !== "gemini-2.5-flash" && (
+                  <span className="block mt-1 text-primary font-medium">
+                    Note: Using premium models requires you to provide your own Google AI Studio API key above.
+                  </span>
+                )}
               </p>
+            </div>
+
+            <div className="flex flex-row items-center justify-between rounded-lg border p-4 mt-6">
+              <div className="space-y-0.5">
+                <label className="text-base font-semibold text-primary">Autonomous Flywheel (Auto-Pilot)</label>
+                <p className="text-sm text-muted-foreground mr-8">
+                  Allow the AI agent to execute non-destructive workflow automations, send pre-approved nurture emails, and execute proactive deal management in the background without manual approval.
+                </p>
+              </div>
+              <div className="shrink-0 flex items-center">
+                <Button 
+                  variant={formData.autopilotEnabled ? "default" : "outline"}
+                  onClick={() => setFormData({ ...formData, autopilotEnabled: !formData.autopilotEnabled })}
+                  className={formData.autopilotEnabled ? "bg-primary text-primary-foreground font-bold" : ""}
+                >
+                  {formData.autopilotEnabled ? "ENABLED" : "DISABLED"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Lead Scoring</CardTitle>
+            <CardDescription>Configure scoring frameworks and criterion percentages</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Primary Framework</label>
+              <Select 
+                value={formData.leadScoringFramework || "BANT"} 
+                onValueChange={(val: "BANT" | "MEDDIC" | "CHAMP") => setFormData({ 
+                  ...formData, 
+                  leadScoringFramework: val,
+                  leadScoringWeights: val === "BANT" ? { Budget: 25, Authority: 25, Need: 30, Timeline: 20 } :
+                                      val === "MEDDIC" ? { Metrics: 15, EconomicBuyer: 20, DecisionCriteria: 15, DecisionProcess: 15, IdentifyPain: 20, Champion: 15 } :
+                                      { Challenges: 30, Authority: 25, Money: 25, Prioritization: 20 }
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BANT">BANT (Budget, Authority, Need, Timeline)</SelectItem>
+                  <SelectItem value="MEDDIC">MEDDIC (Metrics, Economic Buyer, Decision Criteria...)</SelectItem>
+                  <SelectItem value="CHAMP">CHAMP (Challenges, Authority, Money, Prioritization)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-4 pt-4 border-t">
+              <h4 className="text-sm font-medium">Framework Weights (%)</h4>
+              {Object.keys(formData.leadScoringWeights || {}).map((key) => (
+                <div key={key} className="grid gap-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span>{key}</span>
+                    <span className="text-muted-foreground">{formData.leadScoringWeights?.[key] || 0}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="5"
+                    value={formData.leadScoringWeights?.[key] || 0}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setFormData({
+                        ...formData,
+                        leadScoringWeights: {
+                          ...formData.leadScoringWeights,
+                          [key]: val
+                        }
+                      });
+                    }}
+                    className="w-full accent-primary"
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground mt-2">Note: For a perfect 100-point scale, ensure all weights sum to 100%.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Brand Voice</CardTitle>
+            <CardDescription>Configure the tone and style for AI-generated communications</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Tone</label>
+              <Select 
+                value={formData.brandVoice?.tone || "Professional"} 
+                onValueChange={(val) => setFormData({ ...formData, brandVoice: { ...(formData.brandVoice || {}), tone: val } as any })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Formal">Formal</SelectItem>
+                  <SelectItem value="Professional">Professional</SelectItem>
+                  <SelectItem value="Friendly">Friendly</SelectItem>
+                  <SelectItem value="Casual">Casual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <div className="flex justify-between items-center text-sm font-medium">
+                <span>Formality Level</span>
+                <span className="text-muted-foreground">{formData.brandVoice?.formalityLevel || 3}/5</span>
+              </div>
+              <input 
+                type="range" 
+                min="1" 
+                max="5" 
+                step="1"
+                value={formData.brandVoice?.formalityLevel || 3}
+                onChange={(e) => setFormData({ ...formData, brandVoice: { ...(formData.brandVoice || {}), formalityLevel: parseInt(e.target.value) } as any })}
+                className="w-full accent-primary"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Greeting Preference</label>
+                <Input 
+                  value={formData.brandVoice?.greetingPreference || ""} 
+                  onChange={(e) => setFormData({ ...formData, brandVoice: { ...(formData.brandVoice || {}), greetingPreference: e.target.value } as any })}
+                  placeholder="e.g. Hi [Name],"
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Closing Preference</label>
+                <Input 
+                  value={formData.brandVoice?.closingPreference || ""} 
+                  onChange={(e) => setFormData({ ...formData, brandVoice: { ...(formData.brandVoice || {}), closingPreference: e.target.value } as any })}
+                  placeholder="e.g. Best regards,"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Prohibited Phrases</label>
+              <Input 
+                value={formData.brandVoice?.prohibitedPhrases || ""} 
+                onChange={(e) => setFormData({ ...formData, brandVoice: { ...(formData.brandVoice || {}), prohibitedPhrases: e.target.value } as any })}
+                placeholder="Comma separated words or phrases the AI should never use"
+              />
             </div>
           </CardContent>
         </Card>
@@ -376,7 +744,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("company_name")}</label>
               <Input 
-                value={formData.companyName} 
+                value={formData.companyName ?? ""} 
                 onChange={e => setFormData({ ...formData, companyName: e.target.value })}
                 placeholder="Aiappsy CRM" 
               />
@@ -384,7 +752,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("email")}</label>
               <Input 
-                value={formData.email} 
+                value={formData.email ?? ""} 
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
                 placeholder="contact@aiappsy.com" 
               />
@@ -392,7 +760,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("website")}</label>
               <Input 
-                value={formData.website} 
+                value={formData.website ?? ""} 
                 onChange={e => setFormData({ ...formData, website: e.target.value })}
                 placeholder="https://aiappsy.com" 
               />
@@ -400,7 +768,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("vat_region")}</label>
               <Select 
-                value={formData.vatRegion} 
+                value={formData.vatRegion ?? ""} 
                 onValueChange={(val: any) => setFormData({ ...formData, vatRegion: val })}
               >
                 <SelectTrigger>
@@ -417,7 +785,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("default_currency") || "Default Currency"}</label>
               <Select 
-                value={formData.currency} 
+                value={formData.currency ?? ""} 
                 onValueChange={(val: string) => setFormData({ ...formData, currency: val })}
               >
                 <SelectTrigger>
@@ -449,7 +817,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("smtp_host")}</label>
               <Input 
-                value={formData.smtpHost} 
+                value={formData.smtpHost ?? ""} 
                 onChange={e => setFormData({ ...formData, smtpHost: e.target.value })}
                 placeholder="smtp.example.com" 
               />
@@ -457,7 +825,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("smtp_port")}</label>
               <Input 
-                value={formData.smtpPort} 
+                value={formData.smtpPort ?? ""} 
                 onChange={e => setFormData({ ...formData, smtpPort: e.target.value })}
                 placeholder="587" 
               />
@@ -465,7 +833,7 @@ export default function Settings() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">{t("smtp_user")}</label>
               <Input 
-                value={formData.smtpUser} 
+                value={formData.smtpUser ?? ""} 
                 onChange={e => setFormData({ ...formData, smtpUser: e.target.value })}
                 placeholder="user@example.com" 
               />
@@ -474,7 +842,7 @@ export default function Settings() {
               <label className="text-sm font-medium">{t("smtp_pass")}</label>
               <Input 
                 type="password"
-                value={formData.smtpPass} 
+                value={formData.smtpPass ?? ""} 
                 onChange={e => setFormData({ ...formData, smtpPass: e.target.value })}
                 placeholder="••••••••" 
               />
@@ -502,6 +870,25 @@ export default function Settings() {
                 <p className="text-sm text-muted-foreground">{t("push_notifications_desc")}</p>
               </div>
               <Button variant="outline">{t("disabled")}</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Developer & Testing</CardTitle>
+            <CardDescription>Tools for testing the application capabilities</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Seed Mock Data</p>
+                <p className="text-sm text-muted-foreground">Generates fake customers, products, and a pending invoice to test the AI assistant.</p>
+              </div>
+              <Button onClick={seedMockData} variant="secondary" disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Seed Test Data
+              </Button>
             </div>
           </CardContent>
         </Card>

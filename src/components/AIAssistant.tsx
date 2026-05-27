@@ -1,27 +1,77 @@
-import { useState, useRef, useEffect, useCallback, ChangeEvent, useMemo } from "react";
+import { executeToolHelper } from "@/services/executeToolHelper";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  ChangeEvent,
+  useMemo,
+} from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, X, Send, Loader2, MessageSquare, Bot, User, CheckCircle2, Paperclip } from "lucide-react";
+import {
+  Sparkles,
+  X,
+  Send,
+  Loader2,
+  MessageSquare,
+  Bot,
+  User,
+  CheckCircle2,
+  Paperclip,
+  Mic,
+  MicOff,
+  Volume2,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
 import { useAuth } from "@/lib/AuthContext";
 import { useLanguage } from "@/lib/i18n";
 import { useFirestoreDoc } from "@/lib/useFirestore";
-import { crmTools } from "@/services/gemini";
+import { crmTools, resolveModel } from "@/services/gemini";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, updateDoc, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { cn } from "@/lib/utils";
 
-const aiDefault = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getGlobalApiKey = () => {
+  try {
+    // Attempt standard Vite env or process env fallback
+    return (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) 
+      || (typeof process !== 'undefined' && process?.env?.GEMINI_API_KEY) 
+      || "";
+  } catch (e) {
+    return "";
+  }
+};
+const aiDefault = new GoogleGenAI({ apiKey: getGlobalApiKey() || "dummy-key" });
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   isSystem?: boolean;
+  isHidden?: boolean;
   sources?: { uri: string; title: string }[];
 }
+
+import { useVoice } from "@/lib/VoiceContext";
 
 export default function AIAssistant() {
   const { t, language } = useLanguage();
@@ -36,364 +86,295 @@ export default function AIAssistant() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Use custom key if available, otherwise fallback to default
-  const ai = useMemo(() => {
-    return settings?.geminiApiKey 
-      ? new GoogleGenAI({ apiKey: settings.geminiApiKey })
-      : aiDefault;
-  }, [settings?.geminiApiKey]);
+  // Voice mode state
+  const { voiceMode, setVoiceMode, isListening, setIsListening } = useVoice();
+  const recognitionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Initialize or update welcome message when language changes
+  // Initialize Speech Recognition
   useEffect(() => {
-    const welcome = t("welcome_message");
-    if (messages.length === 0) {
-      setMessages([{ role: "assistant", content: welcome }]);
-    } else if (messages.length === 1 && messages[0].role === "assistant" && messages[0].content !== welcome) {
-      setMessages([{ role: "assistant", content: welcome }]);
+    if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
     }
-  }, [language, t, messages]);
+  }, []);
 
-  const executeTool = async (name: string, args: any) => {
-    if (!user) return "Error: User not authenticated";
-
+  const playTTS = async (text: string) => {
+    if (!text || !voiceMode) return;
     try {
-      switch (name) {
-        case "create_customer":
-          await addDoc(collection(db, "customers"), {
-            ...args,
-            ownerId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          return `Successfully created customer: ${args.name}`;
+      // Remove URLs, markdown formatting, emojis for better speech synthesis
+      const cleanText = text.replace(/__|[*]/g, '').replace(/https?:\/\/[^\s]+/g, '').slice(0, 1000);
+      
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel(); // Stop any current speech
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        const targetLang = language === "no" ? "no-NO" : language === "sv" ? "sv-SE" : language === "da" ? "da-DK" : "en-US";
+        utterance.lang = targetLang;
+        
+        // Try to pick a Google voice or a local native voice
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(v => v.lang.startsWith(targetLang.substring(0,2)) && (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Premium")));
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
 
-        case "create_invoice":
-          await addDoc(collection(db, "invoices"), {
-            ...args,
-            invoiceNumber: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
-            ownerId: user.uid,
-            date: new Date().toISOString()
-          });
-          return `Successfully created invoice for ${args.customerName} for $${args.amount}`;
-
-        case "send_outreach":
-          await addDoc(collection(db, "outreach"), {
-            ...args,
-            status: "Sent",
-            ownerId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          return `Successfully sent ${args.platform} message to ${args.customerName || args.customerId}`;
-
-        case "import_customers":
-          const results = [];
-          for (const customer of args.customers) {
-            await addDoc(collection(db, "customers"), {
-              ...customer,
-              ownerId: user.uid,
-              createdAt: serverTimestamp()
-            });
-            results.push(customer.name);
+        utterance.rate = 1.0;
+        
+        utterance.onend = () => {
+          if (voiceMode) {
+             // Optional: automatically resume listening after speaking
+             // Need a small timeout to avoid capturing the end of the TTS
+             setTimeout(() => {
+               if (recognitionRef.current && !isListening) {
+                 try {
+                   recognitionRef.current.start();
+                   setIsListening(true);
+                 } catch(e) {}
+               }
+             }, 300);
           }
-          return `Successfully imported ${results.length} customers: ${results.join(", ")}`;
+        };
 
-        case "create_quote":
-          await addDoc(collection(db, "quotes"), {
-            ...args,
-            quoteNumber: `QT-${Math.floor(1000 + Math.random() * 9000)}`,
-            ownerId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          return `Successfully created quote for ${args.customerName} for $${args.amount}`;
-
-        case "create_product":
-          await addDoc(collection(db, "products"), {
-            ...args,
-            ownerId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          return `Successfully added product: ${args.name}`;
-
-        case "record_payment":
-          await addDoc(collection(db, "payments"), {
-            ...args,
-            ownerId: user.uid,
-            createdAt: serverTimestamp()
-          });
-          return `Successfully recorded payment of $${args.amount} for invoice ${args.invoiceId}`;
-
-        case "update_record":
-          const updateRef = doc(db, args.collection, args.id);
-          await updateDoc(updateRef, {
-            ...args.updates,
-            updatedAt: serverTimestamp()
-          });
-          return `Successfully updated ${args.collection.slice(0, -1)} with ID ${args.id}`;
-
-        case "delete_record":
-          const deleteRef = doc(db, args.collection, args.id);
-          await deleteDoc(deleteRef);
-          return `Successfully deleted ${args.collection.slice(0, -1)} with ID ${args.id}`;
-
-        case "update_settings":
-          const settingsRef = doc(db, "settings", user.uid);
-          await updateDoc(settingsRef, {
-            ...args,
-            updatedAt: serverTimestamp()
-          });
-          return `Successfully updated settings: ${Object.keys(args).join(", ")}`;
-
-        case "generate_report_summary":
-          const collectionName = args.category.toLowerCase();
-          const q = query(collection(db, collectionName), where("ownerId", "==", user.uid));
-          const snapshot = await getDocs(q);
-          const count = snapshot.size;
-          let totalAmount = 0;
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.amount) totalAmount += Number(data.amount);
-            if (data.price) totalAmount += Number(data.price);
-          });
-          return `Report Summary for ${args.category} (${args.timeframe}): Found ${count} records. Total value: $${totalAmount.toFixed(2)}.`;
-
-        case "send_email":
-          if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
-            return "Error: SMTP settings not configured. Please configure in settings.";
-          }
-          const emailResponse = await fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              host: settings.smtpHost,
-              port: settings.smtpPort || "587",
-              user: settings.smtpUser,
-              pass: settings.smtpPass,
-              to: args.to,
-              subject: args.subject,
-              body: args.body,
-            })
-          });
-          const emailData = await emailResponse.json();
-          if (!emailResponse.ok) throw new Error(emailData.error || "Failed to send email");
-          return `Successfully sent email to ${args.to} with subject: ${args.subject}`;
-
-        case "create_stripe_payment":
-          const stripeSecretKey = settings?.stripeSecretKey;
-          if (!stripeSecretKey) {
-            return "Error: Stripe Secret Key is not configured for your user. Please add it to your Integrations settings.";
-          }
-          const stripeResponse = await fetch("/api/stripe/create-checkout-session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              invoiceId: args.invoiceNumber,
-              invoiceNumber: args.invoiceNumber,
-              amount: args.amount,
-              currency: args.currency || "usd",
-              customerName: args.customerName,
-              stripeSecretKey: stripeSecretKey,
-              successUrl: window.location.origin + "/app/payments",
-              cancelUrl: window.location.origin + "/app/payments",
-            })
-          });
-          const stripeData = await stripeResponse.json();
-          if (!stripeResponse.ok) throw new Error(stripeData.error || "Failed to create Stripe payment");
-          return `Successfully generated Stripe checkout URL for invoice ${args.invoiceNumber}: ${stripeData.url}`;
-
-        case "create_paypal_order":
-          const paypalClientId = globalConfig?.paymentProviders?.paypalClientId;
-          const paypalSecretKey = globalConfig?.paymentProviders?.paypalSecretKey;
-          if (!paypalClientId || !paypalSecretKey) {
-            return "Error: PayPal is not configured in global Admin Settings.";
-          }
-          const paypalResponse = await fetch("/api/paypal/create-order", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              amount: args.amount,
-              currency: args.currency || "USD",
-              clientId: paypalClientId,
-              secretKey: paypalSecretKey
-            })
-          });
-          const paypalData = await paypalResponse.json();
-          if (!paypalResponse.ok) throw new Error(paypalData.error || "Failed to create PayPal order");
-          return `Successfully created PayPal order for $${args.amount} with Order ID: ${paypalData.id}`;
-
-        case "get_business_health_summary":
-          return `Business Health Summary (${args.timeframe || "current"}): Revenue is up 12% compared to last period. You have 3 overdue tasks and 5 pending invoices totaling $1,250. 2 new leads generated yesterday.`;
-
-        default:
-          return `Error: Unknown tool ${name}`;
+        window.speechSynthesis.speak(utterance);
       }
-    } catch (error: any) {
-      console.error(`Tool execution error (${name}):`, error);
-      return `Error executing ${name}: ${error.message}`;
+    } catch (e) {
+      console.error("TTS Failed", e);
     }
   };
 
-  const handleSend = useCallback(async (overrideMessage?: string) => {
-    const messageToSend = overrideMessage || input.trim();
-    if (!messageToSend || loading) return;
-
-    if (!overrideMessage) setInput("");
-    setMessages(prev => [...prev, { role: "user", content: messageToSend }]);
-    setLoading(true);
-
-    // Token and BYOK Check
-    const hasBYOK = !!settings?.geminiApiKey;
-    const isEnterprise = settings?.tier === "enterprise" || userProfile?.role === "super_admin" || user?.email === "paljuritzen@gmail.com";
-    const availableTokens = userProfile?.aiTokens || 0;
-    const tokenExpiry = userProfile?.aiTokenExpiry?.toDate ? userProfile.aiTokenExpiry.toDate() : new Date(0);
-    const now = new Date();
-    const hasActiveTokenSession = tokenExpiry > now;
-
-    if (!hasBYOK && !isEnterprise) {
-      if (!hasActiveTokenSession) {
-        if (availableTokens > 0) {
-          // Deduct token and start 1-hour session
-          try {
-            const userRef = doc(db, "users", user.uid);
-            await updateDoc(userRef, {
-              aiTokens: availableTokens - 1,
-              aiTokenExpiry: new Date(now.getTime() + 60 * 60 * 1000) // +1 hour
-            });
-          } catch (e) {
-            console.error("Failed to deduct token", e);
-          }
-        } else {
-          // Out of tokens
-          setMessages(prev => [...prev, { 
-            role: "assistant", 
-            content: "You are out of AI tokens. Please purchase more tokens in the Settings page or provide your own Gemini API key (BYOK) to continue using the AI Assistant." 
-          }]);
-          setLoading(false);
-          return;
-        }
+  const toggleListening = () => {
+    if (!recognitionRef.current) return;
+    
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.lang = language === "no" ? "no-NO" : language === "sv" ? "sv-SE" : language === "da" ? "da-DK" : "en-US";
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setInput(transcript);
+          handleSend(transcript);
+        };
+        recognitionRef.current.onerror = () => setIsListening(false);
+        recognitionRef.current.onend = () => setIsListening(false);
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e) {
+        setIsListening(false);
       }
     }
+  };
 
-    const processHistory = () => {
-      let filtered = messages.filter(m => !m.isSystem && m.content);
-      // Gemini API history must start with 'user'
-      while (filtered.length > 0 && filtered[0].role !== "user") {
-        filtered.shift();
-      }
-      return filtered.map(m => ({
-        role: m.role === "user" ? "user" : "model",
-        parts: [{ text: m.content }],
-      }));
-    };
+  // Use custom key if available, otherwise fallback to default
+  const ai = useMemo(() => {
+    let apiKeyToUse = "";
+    if (settings?.geminiApiKey && typeof settings.geminiApiKey === "string" && settings.geminiApiKey.trim().length > 10) {
+      apiKeyToUse = settings.geminiApiKey.trim();
+    } else if (globalConfig?.systemApis?.geminiApiKey && typeof globalConfig.systemApis.geminiApiKey === "string" && globalConfig.systemApis.geminiApiKey.trim().length > 10) {
+      apiKeyToUse = globalConfig.systemApis.geminiApiKey.trim();
+    } else {
+      apiKeyToUse = getGlobalApiKey();
+    }
+    return apiKeyToUse ? new GoogleGenAI({ apiKey: apiKeyToUse }) : aiDefault;
+  }, [settings?.geminiApiKey, globalConfig?.systemApis?.geminiApiKey]);
 
-    try {
-      const chat = ai.chats.create({
-        model: settings?.aiModel || "gemini-3-flash-preview",
-        history: processHistory(),
-        config: {
-          tools: [{ functionDeclarations: crmTools }, { googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true },
-          systemInstruction: `You are the Aiappsy Executive AI Assistant—a high-level business analyst and proactive partner for Aiappsy CRM users.
+  const previousOpenState = useRef(false);
 
-CORE IDENTITY:
-You are ambitious, professional, and action-oriented. You don't just answer questions; you help users grow their business by managing leads, automating outreach, and providing "WOW" moments of intelligence.
+  const handleSend = useCallback(
+    async (overrideMessage?: string, isHiddenQuery: boolean = false) => {
+      const messageToSend = overrideMessage || input.trim();
+      if (!messageToSend || loading) return;
 
-SPECIFIC KNOWLEDGE:
-1. The "WOW" Demo Flow: Capture (Nexus Editor) -> Intelligence (Analysis) -> Action (Drafting) -> Revenue (Stripe).
-2. BYOK (Bring Your Own Key): If users ask how to set up AI or provide a key, tell them to go to the Settings page in this app, paste their Gemini API key from AI Studio, and select their preferred model. There is NO Azure or AWS KMS setup involved in this app. Provide this link to get the key: https://aistudio.google.com/app/apikey.
+      if (!overrideMessage) setInput("");
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: messageToSend, isHidden: isHiddenQuery },
+      ]);
+      setLoading(true);
 
-CAPABILITIES:
-- Execute tasks: Create/Update/Delete customers, invoices, quotes, products, and payments.
-- Outreach: Draft and send Email/WhatsApp messages.
-- Analysis: Generate summary reports and use Google Search for market research.
-- Settings: If a tool requires missing settings/configuration, clearly advise the user exactly where in the app to configure it. Include external links if needed.
-
-GUIDELINES:
-- When a user asks to do something, use the appropriate tool immediately.
-- If CSV/Text data is provided, parse and use the import_customers tool.
-- Keep responses extremely concise (under 50 words) and direct.
-- Be proactive: "I've drafted a proposal for this lead. Shall I send it via WhatsApp now?"
-- Always respond in the language the user speaks to you.`
-        }
-      });
-
-      const stream = await chat.sendMessageStream({
-        message: messageToSend
-      });
+      // Token and BYOK Check
+      const hasBYOK = !!settings?.geminiApiKey;
+      const currentModel = resolveModel(settings?.aiModel);
+      const isPremiumModel = !["gemini-2.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"].includes(currentModel);
       
-      let fullText = "";
-      let hasStartedAssistantMessage = false;
-      let collectedFunctionCalls: any[] = [];
+      const isEnterprise =
+        settings?.tier === "enterprise" ||
+        userProfile?.role === "super_admin" ||
+        user?.email === "paljuritzen@gmail.com";
+      const availableTokens = userProfile?.aiTokens || 0;
+      const tokenExpiry = userProfile?.aiTokenExpiry?.toDate
+        ? userProfile.aiTokenExpiry.toDate()
+        : new Date(0);
+      const now = new Date();
+      const hasActiveTokenSession = tokenExpiry > now;
 
-      for await (const chunk of stream) {
-        if (chunk.text) {
-          if (!hasStartedAssistantMessage) {
+      if (isPremiumModel && !hasBYOK) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "⚠️ **Premium Model Selected**\n\nYou have configured the assistant to use a premium AI model (e.g., Gemini 3.1 Pro), which requires you to bring your own API key.\n\nTo continue, please go to **Settings > Integrations** and add your Google AI Studio API Key. Alternatively, switch your model back to the included `Gemini 3.0 Flash` to continue using your standard AI actions.",
+            isSystem: true,
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+
+      if (!hasBYOK && !isEnterprise) {
+        if (!hasActiveTokenSession) {
+          if (availableTokens > 0) {
+            // Deduct credit and start 1-hour session
+            try {
+              const userRef = doc(db, "users", user.uid);
+              await updateDoc(userRef, {
+                aiTokens: availableTokens - 1,
+                aiTokenExpiry: new Date(now.getTime() + 60 * 60 * 1000), // +1 hour
+              });
+            } catch (e) {
+              console.error("Failed to deduct credit", e);
+            }
+          } else {
+            // Out of credits
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  "You are out of AI Actions. Please upgrade your plan in the Settings page or provide your own Gemini API key (BYOK) to unlock unlimited usage.",
+              },
+            ]);
             setLoading(false);
-            setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-            hasStartedAssistantMessage = true;
+            return;
           }
-          fullText += chunk.text;
-          const groundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-          const sources = groundingChunks?.map((c: any) => ({
-            uri: c.web?.uri || c.maps?.uri,
-            title: c.web?.title || c.maps?.title
-          })).filter((s: any) => s.uri);
-
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.role === "assistant") {
-              lastMessage.content = fullText;
-              if (sources && sources.length > 0) {
-                lastMessage.sources = sources;
-              }
-            }
-            return [...newMessages];
-          });
-        }
-
-        if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-          collectedFunctionCalls = [...collectedFunctionCalls, ...chunk.functionCalls];
         }
       }
-      
-      if (collectedFunctionCalls.length > 0) {
-        const toolResults = [];
-        for (const call of collectedFunctionCalls) {
-          setMessages(prev => [...prev, { role: "assistant", content: `Executing: ${call.name}...`, isSystem: true }]);
-          const toolResult = await executeTool(call.name, call.args);
-          toolResults.push({
-            functionResponse: {
-              name: call.name,
-              response: { result: toolResult }
+
+      const processHistory = () => {
+        let filtered = messages.filter((m) => !m.isSystem && m.content);
+
+        const alternatingFiltered = [];
+        for (const m of filtered) {
+          const cleanMessage = { ...m };
+          if (alternatingFiltered.length === 0) {
+            if (cleanMessage.role === "user")
+              alternatingFiltered.push(cleanMessage);
+          } else {
+            const lastIndex = alternatingFiltered.length - 1;
+            const lastRole = alternatingFiltered[lastIndex].role;
+            if (cleanMessage.role !== lastRole) {
+              alternatingFiltered.push(cleanMessage);
+            } else {
+              alternatingFiltered[lastIndex].content +=
+                "\n\n" + cleanMessage.content;
             }
-          });
+          }
         }
 
-        // Send tool results back to model (stream the final response too)
-        const finalStream = await chat.sendMessageStream({
-          message: toolResults as any
+        return alternatingFiltered.map((m) => ({
+          role: m.role === "user" ? "user" : "model",
+          parts: [{ text: m.content }],
+        }));
+      };
+
+      try {
+        const brandVoice = settings?.brandVoice || {};
+        const brandVoiceStr = `
+Tone: ${brandVoice.tone || 'Professional'}
+Formality Level: ${brandVoice.formalityLevel || 3}/5
+Greeting Preference: ${brandVoice.greetingPreference || 'Hi [Name],'}
+Closing Preference: ${brandVoice.closingPreference || 'Best regards,'}
+Prohibited Phrases: ${brandVoice.prohibitedPhrases || 'None'}
+`;
+        
+        const systemInstruction = `You are the AIAppsy CRM Agent, an autonomous execution engine for modern business management. You are NOT a passive advisor. You are a DOER.
+
+CORE PHILOSOPHY: You do not just surface insights or flag risks. You determine the correct course of action and carry it out within the system. You confirm completion and move to the next priority. When a deal stalls, you do not send a reminder email to the rep. You review the communication history, draft a personalized follow-up, schedule it for optimal send time, and notify the rep after the action is taken.
+
+The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.
+
+YOUR CAPABILITIES:
+1. TASK EXECUTION: Create contacts, update deals, send emails, schedule meetings, assign tasks - all autonomously upon request or proactively.
+2. PIPELINE MONITORING: Continuously track deal velocity and engagement. Intervene when deals stall with re-engagement actions.
+3. LEAD SCORING: Apply BANT, MEDDIC, or CHAMP frameworks using real interaction data to rank and prioritize leads automatically.
+4. SMART FORECASTING: Generate revenue forecasts based on historical win rates, deal age distributions, and seasonal patterns.
+5. DATA ENRICHMENT: Merge duplicates, fill missing fields, and enrich records with external data sources without manual effort.
+6. REPORT GENERATION: Produce detailed pipeline, activity, and performance reports on demand or on schedule.
+7. EMAIL DRAFTING: Compose personalized, context-aware emails based on each prospect's communication history and stage. Schedule at optimal send times.
+8. WORKFLOW AUTOMATION: Trigger multi-step workflows based on conditions and events, reducing manual handoffs and delays.
+9. CUSTOMER SUCCESS: Monitor health signals, detect churn risk early, and proactively schedule check-ins and business reviews.
+10. DATA HYGIENE: Continuously audit data quality, merge duplicates, enrich records, and flag inconsistencies.
+
+AUTOPILOT / AUTONOMOUS FLYWHEEL:
+This user has Autopilot ${settings?.autopilotEnabled ? "ENABLED" : "DISABLED"}. 
+${settings?.autopilotEnabled ? "You have explicit permission to take non-destructive actions autonomously and aggressively optimize their pipeline. Surface daily summaries instead of asking for permission." : "You must ask for explicit permission before executing workflows or sending communications."}
+
+BUSINESS CONTEXT & BRAND VOICE:
+${brandVoiceStr}
+
+The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : 'English'}). You MUST reply in this language.
+
+BEHAVIORAL RULES:
+- For non-destructive actions (draft email, schedule meeting, create task): Execute immediately, then notify the user with the result.
+- For destructive actions (delete, merge, escalate): Ask for confirmation before executing.
+- Always use the Brand Voice guidelines when drafting communications.
+- Always reference the Context Engine for business-specific knowledge.
+- When you detect a risk or opportunity, act on it. Do not wait to be asked.
+- Provide results as actionable intelligence, not raw data.
+- If multiple actions are needed, execute them in sequence and report the combined outcome.
+- Track every action you take in the audit log.
+
+RESPONSE FORMAT: When executing actions, respond with a structured action card (or concise text):
+[Action Type] - [Status]
+Details: [What was done]
+Next: [Recommended follow-up, if any]
+
+When answering questions, be concise, data-driven, and action-oriented. End every response with a suggested next action the user can take or that you can execute on their behalf.`;
+
+        const chat = ai.chats.create({
+          model: resolveModel(settings?.aiModel),
+          history: processHistory(),
+          config: {
+            tools: [{ functionDeclarations: crmTools }],
+            systemInstruction,
+          },
         });
 
-        let finalFullText = "";
-        let hasStartedFinalMessage = false;
+        const stream = await chat.sendMessageStream({
+          message: messageToSend,
+        });
 
-        for await (const chunk of finalStream) {
+        let fullText = "";
+        let hasStartedAssistantMessage = false;
+        let collectedFunctionCalls: any[] = [];
+
+        for await (const chunk of stream) {
           if (chunk.text) {
-            if (!hasStartedFinalMessage) {
-              setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-              hasStartedFinalMessage = true;
+            if (!hasStartedAssistantMessage) {
+              setMessages((prev) => [
+                ...prev,
+                { role: "assistant", content: "" },
+              ]);
+              hasStartedAssistantMessage = true;
             }
-            finalFullText += chunk.text;
-            const groundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-            const sources = groundingChunks?.map((c: any) => ({
-              uri: c.web?.uri || c.maps?.uri,
-              title: c.web?.title || c.maps?.title
-            })).filter((s: any) => s.uri);
+            fullText += chunk.text;
+            const groundingChunks =
+              chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            const sources = groundingChunks
+              ?.map((c: any) => ({
+                uri: c.web?.uri || c.maps?.uri,
+                title: c.web?.title || c.maps?.title,
+              }))
+              .filter((s: any) => s.uri);
 
-            setMessages(prev => {
+            setMessages((prev) => {
               const newMessages = [...prev];
               const lastMessage = newMessages[newMessages.length - 1];
               if (lastMessage && lastMessage.role === "assistant") {
-                lastMessage.content = finalFullText;
+                lastMessage.content = fullText;
                 if (sources && sources.length > 0) {
                   lastMessage.sources = sources;
                 }
@@ -401,16 +382,123 @@ GUIDELINES:
               return [...newMessages];
             });
           }
+
+          if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+            collectedFunctionCalls = [
+              ...collectedFunctionCalls,
+              ...chunk.functionCalls,
+            ];
+          }
         }
+        
+        if (collectedFunctionCalls.length === 0) {
+          if (!hasStartedAssistantMessage) {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: "I couldn't generate a response. This may be due to safety filters or an empty response." },
+            ]);
+            playTTS("I couldn't generate a response. This may be due to safety filters.");
+          } else {
+            playTTS(fullText);
+          }
+        }
+
+        if (collectedFunctionCalls.length > 0) {
+          const toolResults = [];
+          for (const call of collectedFunctionCalls) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `Executing: ${call.name}...`,
+                isSystem: true,
+              },
+            ]);
+            const toolResult = await executeToolHelper(call.name, call.args, user, settings, globalConfig);
+            toolResults.push({
+              functionResponse: {
+                name: call.name,
+                response: { result: toolResult },
+              },
+            });
+          }
+
+          // Send tool results back to model (stream the final response too)
+          const finalStream = await chat.sendMessageStream({ message: toolResults as any });
+
+          let finalFullText = "";
+          let hasStartedFinalMessage = false;
+
+          for await (const chunk of finalStream) {
+            if (chunk.text) {
+              if (!hasStartedFinalMessage) {
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "assistant", content: "" },
+                ]);
+                hasStartedFinalMessage = true;
+              }
+              finalFullText += chunk.text;
+              const groundingChunks =
+                chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+              const sources = groundingChunks
+                ?.map((c: any) => ({
+                  uri: c.web?.uri || c.maps?.uri,
+                  title: c.web?.title || c.maps?.title,
+                }))
+                .filter((s: any) => s.uri);
+
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage && lastMessage.role === "assistant") {
+                  lastMessage.content = finalFullText;
+                  if (sources && sources.length > 0) {
+                    lastMessage.sources = sources;
+                  }
+                }
+                return [...newMessages];
+              });
+            }
+          }
+          if (!hasStartedFinalMessage) {
+            finalFullText = "I have completed the requested actions.";
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: finalFullText },
+            ]);
+          }
+          playTTS(finalFullText);
+        }
+      } catch (error: any) {
+        console.error("AI Assistant Error:", error);
+        let errorData = error;
+        let errorMessage = "An unknown error occurred.";
+        
+        try {
+          if (typeof error?.message === "string" && error.message.startsWith("{")) {
+             errorData = JSON.parse(error.message);
+          }
+        } catch(e) {}
+        
+        const stringMessage = errorData?.error?.message || errorData?.message || error?.message || String(error);
+        
+        if (stringMessage.includes("API key not valid") || stringMessage.includes("API_KEY_INVALID")) {
+          errorMessage = "Invalid Gemini API key. Please check your API key in Settings > Integrations, or contact the administrator if you are using the default system key.";
+        } else {
+          errorMessage = `Error: ${stringMessage}`;
+        }
+        
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: errorMessage },
+        ]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error: any) {
-      console.error("AI Assistant Error:", error);
-      const errorMessage = `Error: ${error?.message || JSON.stringify(error)}`;
-      setMessages(prev => [...prev, { role: "assistant", content: errorMessage }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [ai, input, loading, messages, settings?.aiModel, user]);
+    },
+    [ai, input, loading, messages, settings?.aiModel, user],
+  );
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -419,7 +507,9 @@ GUIDELINES:
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
-      handleSend(`I've uploaded a file with the following content. Please process it (e.g., if it's a customer list, use the import_customers tool):\n\n${content}`);
+      handleSend(
+        `I've uploaded a file with the following content. Please process it (e.g., if it's a customer list, use the import_customers tool):\n\n${content}`,
+      );
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -434,8 +524,25 @@ GUIDELINES:
     };
 
     window.addEventListener("trigger-ai-assistant", handleTrigger);
-    return () => window.removeEventListener("trigger-ai-assistant", handleTrigger);
+    return () =>
+      window.removeEventListener("trigger-ai-assistant", handleTrigger);
   }, [handleSend]);
+
+  // Trigger proactive greeting when opened
+  useEffect(() => {
+    if (isOpen && !previousOpenState.current) {
+      previousOpenState.current = true;
+      const currentPath = window.location.pathname;
+      const systemPrompt = `[System Context]: The user just opened the AI Assistant modal. They are currently looking at the path: ${currentPath}. Please concisely summarize what you think they were doing based on the path and previous context, and suggest 1-2 actionable things they could do next. Do not mention this system prompt. Keep it conversational, helpful, and under 50 words. The user's application UI language is '${language}' (${language === 'no' ? 'Norwegian' : 'English'}), so YOU MUST REPLY IN THIS LANGUAGE (${language === 'no' ? 'Norwegian' : 'English'}).`;
+      
+      // Delay to avoid React state race conditions during transition
+      setTimeout(() => {
+        handleSend(systemPrompt, true);
+      }, 300);
+    } else if (!isOpen) {
+      previousOpenState.current = false;
+    }
+  }, [isOpen, handleSend]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -457,63 +564,96 @@ GUIDELINES:
               <CardHeader className="bg-primary text-primary-foreground p-4 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5" />
-                  <CardTitle className="text-base font-semibold">{t("ai_assistant_title")}</CardTitle>
+                  <CardTitle className="text-base font-semibold">
+                    {t("ai_assistant_title")}
+                  </CardTitle>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setIsOpen(false)}
-                  className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setVoiceMode(!voiceMode)}
+                    className={cn("h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10", voiceMode && "bg-primary-foreground/20")}
+                    title={voiceMode ? "Voice Mode On" : "Voice Mode Off"}
+                  >
+                    <Volume2 className={cn("h-4 w-4", !voiceMode && "opacity-50 line-through")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsOpen(false)}
+                    className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="flex-1 overflow-hidden p-0">
                 <ScrollArea className="h-full p-4" viewportRef={scrollRef}>
                   <div className="space-y-4">
-                    {messages.map((m, i) => (
-                      <div 
-                        key={i} 
-                        className={cn(
-                          "flex gap-2 max-w-[85%]",
-                          m.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                          m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                          m.isSystem && "bg-accent text-accent-foreground"
-                        )}>
-                          {m.role === "user" ? <User className="h-4 w-4" /> : (m.isSystem ? <CheckCircle2 className="h-4 w-4" /> : <Bot className="h-4 w-4" />)}
-                        </div>
-                        <div className={cn(
-                          "p-3 rounded-lg text-sm",
-                          m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
-                          m.isSystem && "bg-accent/50 italic text-xs"
-                        )}>
-                          {m.content}
-                          {m.sources && m.sources.length > 0 && (
-                            <div className="mt-2 pt-2 border-t border-muted-foreground/20 text-[10px]">
-                              <p className="font-semibold mb-1 opacity-70">Sources:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {m.sources.map((s, idx) => (
-                                  <a 
-                                    key={idx} 
-                                    href={s.uri} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-primary hover:underline bg-background/50 px-1 rounded truncate max-w-[150px]"
-                                    title={s.title}
-                                  >
-                                    {s.title || s.uri}
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
+                    {messages
+                      .filter((m) => !m.isHidden)
+                      .map((m, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "flex gap-2 max-w-[85%]",
+                            m.role === "user"
+                              ? "ml-auto flex-row-reverse"
+                              : "mr-auto",
                           )}
+                        >
+                          <div
+                            className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                              m.role === "user"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground",
+                              m.isSystem && "bg-accent text-accent-foreground",
+                            )}
+                          >
+                            {m.role === "user" ? (
+                              <User className="h-4 w-4" />
+                            ) : m.isSystem ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                              <Bot className="h-4 w-4" />
+                            )}
+                          </div>
+                          <div
+                            className={cn(
+                              "p-3 rounded-lg text-sm",
+                              m.role === "user"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted",
+                              m.isSystem && "bg-accent/50 italic text-xs",
+                            )}
+                          >
+                            {m.content}
+                            {m.sources && m.sources.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-muted-foreground/20 text-[10px]">
+                                <p className="font-semibold mb-1 opacity-70">
+                                  Sources:
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                  {m.sources.map((s, idx) => (
+                                    <a
+                                      key={idx}
+                                      href={s.uri}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline bg-background/50 px-1 rounded truncate max-w-[150px]"
+                                      title={s.title}
+                                    >
+                                      {s.title || s.uri}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
                     {loading && (
                       <div className="flex gap-2 mr-auto max-w-[85%]">
                         <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -521,7 +661,9 @@ GUIDELINES:
                         </div>
                         <div className="bg-muted p-3 rounded-lg flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-xs text-muted-foreground italic">{t("thinking")}</span>
+                          <span className="text-xs text-muted-foreground italic">
+                            {t("thinking")}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -529,8 +671,11 @@ GUIDELINES:
                 </ScrollArea>
               </CardContent>
               <CardFooter className="p-3 border-t">
-                <form 
-                  onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend();
+                  }}
                   className="flex w-full items-center gap-2"
                 >
                   <input
@@ -540,24 +685,39 @@ GUIDELINES:
                     className="hidden"
                     accept=".csv,.txt"
                   />
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={loading}
                     className="shrink-0"
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleListening}
+                    disabled={loading}
+                    className={cn("shrink-0 transition-colors", isListening && "bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700 dark:bg-red-900/30 dark:text-red-400")}
+                  >
+                    {isListening ? <Mic className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4 opacity-70" />}
+                  </Button>
                   <Input
-                    placeholder={t("ai_assistant_placeholder")}
-                    value={input}
+                    placeholder={isListening ? "Listening..." : t("ai_assistant_placeholder")}
+                    value={input ?? ""}
                     onChange={(e) => setInput(e.target.value)}
                     className="flex-1"
-                    disabled={loading}
+                    disabled={loading || isListening}
                   />
-                  <Button type="submit" size="icon" disabled={loading || !input.trim()} className="shrink-0">
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={loading || !input.trim()}
+                    className="shrink-0"
+                  >
                     <Send className="h-4 w-4" />
                   </Button>
                 </form>
@@ -572,7 +732,11 @@ GUIDELINES:
         className="h-14 w-14 rounded-full shadow-lg hover:scale-110 transition-transform duration-200"
         onClick={() => setIsOpen(!isOpen)}
       >
-        {isOpen ? <X className="h-6 w-6" /> : <MessageSquare className="h-6 w-6" />}
+        {isOpen ? (
+          <X className="h-6 w-6" />
+        ) : (
+          <MessageSquare className="h-6 w-6" />
+        )}
       </Button>
     </div>
   );

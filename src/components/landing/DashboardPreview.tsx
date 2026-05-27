@@ -8,13 +8,16 @@ import {
   Sparkles,
   Zap
 } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 export default function DashboardPreview() {
+  const { t } = useLanguage();
+
   const stats = [
-    { title: "Total Revenue", value: "$12,450.00", change: "+12.5%", trend: "up", icon: DollarSign },
-    { title: "Active Leads", value: "48", change: "+5.2%", trend: "up", icon: Users },
-    { title: "Quotes Sent", value: "124", change: "+2.1%", trend: "up", icon: FileText },
-    { title: "Conversion", value: "24.5%", change: "-1.2%", trend: "down", icon: TrendingUp },
+    { title: t("total_revenue") || "Total Revenue", value: "$12,450.00", change: "+12.5%", trend: "up", icon: DollarSign },
+    { title: t("active_leads") || "Active Leads", value: "48", change: "+5.2%", trend: "up", icon: Users },
+    { title: t("quotes_sent") || "Quotes Sent", value: "124", change: "+2.1%", trend: "up", icon: FileText },
+    { title: t("conversion") || "Conversion", value: "24.5%", change: "-1.2%", trend: "down", icon: TrendingUp },
   ];
 
   return (
