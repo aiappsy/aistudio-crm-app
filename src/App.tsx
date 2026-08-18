@@ -26,6 +26,7 @@ import ContactDetail from "./pages/ContactDetail";
 import Notebook from "./pages/Notebook";
 import Pipeline from "./pages/Pipeline";
 import Leads from "./pages/Leads";
+import LeadGen from "./pages/LeadGen";
 import DataHygiene from "./pages/DataHygiene";
 import CustomerSuccess from "./pages/CustomerSuccess";
 import Workflows from "./pages/Workflows";
@@ -43,6 +44,8 @@ import { fetchExchangeRates } from "./lib/utils";
 
 import { VoiceProvider } from "./lib/VoiceContext";
 import { useProactiveEngine } from "./hooks/useProactiveEngine";
+
+import { ThemeProvider } from "./components/ThemeProvider";
 
 function AppEngine() {
   useProactiveEngine();
@@ -70,7 +73,8 @@ export default function App() {
   }, []);
 
   return (
-    <ErrorBoundary>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <ErrorBoundary>
       <AuthProvider>
         <LanguageProvider>
           <VoiceProvider>
@@ -101,6 +105,7 @@ export default function App() {
                               <Route path="/contacts/custom" element={<Contacts type="custom" />} />
                               <Route path="/pipeline" element={<Pipeline />} />
                               <Route path="/leads" element={<Leads />} />
+                              <Route path="/leadgen" element={<LeadGen />} />
                               <Route path="/data-hygiene" element={<DataHygiene />} />
                               <Route path="/customer-success" element={<CustomerSuccess />} />
                               <Route path="/workflows" element={<Workflows />} />
@@ -120,16 +125,17 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <AIAssistant />
                 </ProtectedRoute>
               } />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            <AIAssistant />
           </Router>
           </VoiceProvider>
         </LanguageProvider>
       </AuthProvider>
     </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 

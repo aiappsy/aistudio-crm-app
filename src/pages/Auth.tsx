@@ -47,7 +47,15 @@ export default function Auth() {
       await signIn();
       handleNavigatePostAuth();
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/operation-not-allowed") {
+        setError("Google sign-in is not enabled. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else if (err.code === "auth/popup-closed-by-user") {
+        setError("Sign-in cancelled. Please try again.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError("Domain not authorized in Firebase. Add this app's URL to Firebase Console > Authentication > Settings > Authorized domains.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -65,7 +73,17 @@ export default function Auth() {
       }
       handleNavigatePostAuth();
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/operation-not-allowed") {
+        setError("Email/Password sign-in is not enabled. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else if (err.code === "auth/email-already-in-use") {
+        setError("This email is already registered. Please sign in instead.");
+      } else if (err.code === "auth/invalid-credential") {
+        setError("Invalid email or password.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password is too weak. Please use at least 6 characters.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

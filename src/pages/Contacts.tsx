@@ -59,6 +59,7 @@ interface Contact {
   phone: string;
   status: "Active" | "Lead" | "Inactive";
   type: "customer" | "supplier" | "custom";
+  industry?: string;
   lastContact: string;
 }
 
@@ -98,6 +99,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
     phone: "",
     status: "Lead",
     type: type || "customer",
+    industry: "",
   });
 
   const handleOpenAdd = () => {
@@ -109,6 +111,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
       phone: "",
       status: "Lead",
       type: type || "customer",
+      industry: "",
     });
     setIsDialogOpen(true);
   };
@@ -122,6 +125,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
       phone: contact.phone,
       status: contact.status,
       type: contact.type || "customer",
+      industry: contact.industry || "",
     });
     setIsDialogOpen(true);
   };
@@ -166,6 +170,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
           if (header === "company") contact.company = values[index];
           if (header === "email") contact.email = values[index];
           if (header === "phone") contact.phone = values[index];
+          if (header === "industry" || header === "niche") contact.industry = values[index];
           if (header === "status") contact.status = values[index] || "Lead";
           if (header === "type") contact.type = values[index] || type || "customer";
         });
@@ -189,7 +194,8 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
   const filteredContacts = contacts.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase());
+      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.industry || "").toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesType = !type || c.type === type;
     
@@ -284,6 +290,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <TableHead>{t("name")}</TableHead>
                 <TableHead>{t("company")}</TableHead>
                 <TableHead>{t("contact")}</TableHead>
+                <TableHead>{t("industry") || "Industry"}</TableHead>
                 <TableHead>{t("status")}</TableHead>
                 <TableHead>{t("last_contact")}</TableHead>
                 <TableHead className="text-right">{t("actions")}</TableHead>
@@ -322,6 +329,15 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                           {contact.phone}
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {contact.industry ? (
+                        <Badge variant="outline" className="text-xs bg-muted/50 rounded-md truncate max-w-[120px]">
+                          {contact.industry}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs italic">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge 
@@ -423,6 +439,15 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                   value={formData.phone ?? ""}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="industry">{t("industry") || "Industry/Niche"}</Label>
+                <Input
+                  id="industry"
+                  placeholder="e.g. Healthcare, Tech, Real Estate..."
+                  value={formData.industry ?? ""}
+                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">

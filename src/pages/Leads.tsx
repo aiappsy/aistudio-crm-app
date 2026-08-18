@@ -62,7 +62,7 @@ export default function Leads() {
         const { GoogleGenAI } = await import("@google/genai");
         const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
         response = await ai.models.generateContent({
-          model: "gemini-3.0-flash",
+          model: "gemini-2.5-flash",
           contents: promptData,
           config: { responseMimeType: "application/json" }
         });

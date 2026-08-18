@@ -18,6 +18,8 @@ interface UserSettings {
   email: string;
   website: string;
   geminiApiKey: string;
+  openaiApiKey?: string;
+  openAiVoice?: string;
   stripePublishableKey: string;
   stripeSecretKey: string;
   smtpHost: string;
@@ -53,6 +55,8 @@ export default function Settings() {
     email: "",
     website: "",
     geminiApiKey: "",
+    openaiApiKey: "",
+    openAiVoice: "alloy",
     stripePublishableKey: "",
     stripeSecretKey: "",
     smtpHost: "",
@@ -85,7 +89,15 @@ export default function Settings() {
   useEffect(() => {
     let baseData = { ...formData };
     if (settings) {
-      baseData = { ...settings };
+      baseData = { 
+        ...formData, 
+        ...settings,
+        leadScoringWeights: settings.leadScoringWeights || formData.leadScoringWeights,
+        brandVoice: {
+          ...formData.brandVoice,
+          ...(settings.brandVoice || {})
+        }
+      };
     } else if (user) {
       baseData.email = user.email || "";
     }
@@ -544,19 +556,23 @@ export default function Settings() {
 
         <Card>
           <CardHeader>
-            <CardTitle>{t("ai_configuration_byok") || "AI Configuration (BYOK)"}</CardTitle>
-            <CardDescription>{t("ai_config_byok_desc") || "Configure your own Gemini API key and select your preferred AI model."}</CardDescription>
+            <CardTitle>{t("ai_configuration") || "AI Configuration"}</CardTitle>
+            <CardDescription>{t("ai_config_desc") || "The system provides a default token-based API key. Optionally, configure your own custom Gemini API key for higher limits."}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-2">
-              <label className="text-sm font-medium">{t("gemini_api_key")}</label>
+              <label className="text-sm font-medium">{t("gemini_api_key")} (Optional)</label>
               <Input 
                 type="password"
                 value={formData.geminiApiKey ?? ""} 
                 onChange={e => setFormData({ ...formData, geminiApiKey: e.target.value })}
                 placeholder="AIzaSy..." 
+                disabled={!(["pro", "growth", "enterprise"].includes(settings?.tier || userProfile?.tier || (userProfile?.role === "super_admin" ? "enterprise" : "free")))}
               />
               <p className="text-xs text-muted-foreground mt-1">
+                {!(["pro", "growth", "enterprise"].includes(settings?.tier || userProfile?.tier || (userProfile?.role === "super_admin" ? "enterprise" : "free"))) ? (
+                  <span className="text-orange-500 font-medium">Bring Your Own Key (BYOK) is only available on paid plans. </span>
+                ) : null}
                 {t("dont_have_api_key")} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">{t("get_free_gemini_key") || "Get a free Gemini API key from Google AI Studio"}</a>.
               </p>
             </div>
@@ -566,24 +582,59 @@ export default function Settings() {
               <Select 
                 value={formData.aiModel || "gemini-2.5-flash"} 
                 onValueChange={(val: string) => setFormData({ ...formData, aiModel: val })}
+                disabled={!formData.geminiApiKey}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select AI Model" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                  <SelectItem value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</SelectItem>
-                  <SelectItem value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</SelectItem>
+                  <SelectItem value="gemini-3.1-pro-preview" disabled={!formData.geminiApiKey}>Gemini 3.1 Pro Preview</SelectItem>
+                  <SelectItem value="gemini-3.1-flash-lite" disabled={!formData.geminiApiKey}>Gemini 3.1 Flash Lite</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
                 {t("ai_model_desc")}
-                {formData.aiModel !== "gemini-2.5-flash" && (
+                {!formData.geminiApiKey && (
                   <span className="block mt-1 text-primary font-medium">
-                    Note: Using premium models requires you to provide your own Google AI Studio API key above.
+                    Note: Premium models are only available when using your own custom API key (BYOK).
                   </span>
                 )}
               </p>
+            </div>
+
+            <div className="grid gap-2 border-t pt-6">
+              <label className="text-sm font-medium">OpenAI API Key (Optional)</label>
+              <Input 
+                type="password"
+                value={formData.openaiApiKey ?? ""} 
+                onChange={e => setFormData({ ...formData, openaiApiKey: e.target.value })}
+                placeholder="sk-proj-..." 
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Provide an OpenAI API key to enable high-quality natural voice generation (TTS) during conversations with the AI Assistant. If empty, the system will use the browser's built-in voice.
+              </p>
+            </div>
+
+            <div className="grid gap-2 mt-2">
+              <label className="text-sm font-medium">OpenAI Voice</label>
+              <Select 
+                value={formData.openAiVoice || "alloy"} 
+                onValueChange={(val: string) => setFormData({ ...formData, openAiVoice: val })}
+                disabled={!formData.openaiApiKey}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Voice" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alloy">Alloy (Neutral)</SelectItem>
+                  <SelectItem value="echo">Echo (Male)</SelectItem>
+                  <SelectItem value="fable">Fable (British/Male)</SelectItem>
+                  <SelectItem value="onyx">Onyx (Deep Male)</SelectItem>
+                  <SelectItem value="nova">Nova (Female)</SelectItem>
+                  <SelectItem value="shimmer">Shimmer (Clear Female)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex flex-row items-center justify-between rounded-lg border p-4 mt-6">
@@ -869,7 +920,26 @@ export default function Settings() {
                 <p className="font-medium">{t("push_notifications")}</p>
                 <p className="text-sm text-muted-foreground">{t("push_notifications_desc")}</p>
               </div>
-              <Button variant="outline">{t("disabled")}</Button>
+              <Button 
+                variant={Notification.permission === "granted" ? "default" : "outline"}
+                onClick={() => {
+                  if (Notification.permission !== "granted") {
+                    Notification.requestPermission().then(perm => {
+                      if (perm === "granted") {
+                        new Notification("Notifications enabled!");
+                        // Force re-render to update button
+                        setFormData({ ...formData });
+                      } else {
+                        alert("Permission denied. Check your browser settings.");
+                      }
+                    });
+                  } else {
+                    alert("Push Notifications are already enabled for this browser.");
+                  }
+                }}
+              >
+                {Notification.permission === "granted" ? t("enabled") : t("disabled")}
+              </Button>
             </div>
           </CardContent>
         </Card>

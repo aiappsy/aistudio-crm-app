@@ -1,7 +1,5 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import Stripe from "stripe";
@@ -15,8 +13,7 @@ import * as cheerio from "cheerio";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Removed __filename and __dirname as they are unused and break CJS bundle
 
 // Initialize Firebase Admin globally
 const serviceAccount = process.env.GOOGLE_APPLICATION_CREDENTIALS 
@@ -37,50 +34,77 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  console.log(`[Boot] Starting server on PORT ${PORT}...`);
+  console.log(`[Boot] NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[Boot] isCloudRun: ${!!process.env.K_SERVICE || !!process.env.K_REVISION}`);
+  console.log(`[Boot] cwd: ${process.cwd()}`);
+
   app.use(express.json());
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
   // API Routes
   app.post("/api/ai/generate", async (req, res) => {
-    const { prompt, systemInstruction, responseSchema, responseMimeType } = req.body;
+    const { prompt, systemInstruction, responseSchema, responseMimeType, useWebSearch, customApiKey } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    const apiKey = (customApiKey && typeof customApiKey === "string" && customApiKey.trim().startsWith("AIza")) 
+        ? customApiKey.trim() 
+        : process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server or provided by client." });
     }
 
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const genAI = new GoogleGenAI({ apiKey });
+      const configObj: any = {
+        systemInstruction: systemInstruction,
+        responseMimeType: responseMimeType || "text/plain",
+      };
+      if (responseSchema) {
+        configObj.responseSchema = responseSchema;
+      }
+      if (useWebSearch) {
+        configObj.tools = [{ googleSearch: {} }];
+        delete configObj.responseMimeType; // Google Search grounding does not support JSON responseMimeType
+        if (responseSchema) delete configObj.responseSchema;
+      }
+
       const response = await genAI.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash", // Default fallback model
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: responseMimeType || "text/plain",
-          responseSchema: responseSchema
-        }
+        config: configObj
       });
 
       res.json({ text: response.text });
     } catch (error: any) {
       console.error("AI Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate content" });
+      const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+      res.status(isInvalidKey ? 400 : 500).json({ error: error.message || "Failed to generate content" });
     }
   });
 
   app.post("/api/ai/chat", async (req, res) => {
-    const { message, history, systemInstruction, tools } = req.body;
+    const { message, history, systemInstruction, tools, customApiKey } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    const apiKey = (customApiKey && typeof customApiKey === "string" && customApiKey.trim().startsWith("AIza")) 
+        ? customApiKey.trim() 
+        : process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(400).json({ error: "GEMINI_API_KEY is not configured on the server or provided by client." });
     }
 
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const genAI = new GoogleGenAI({ apiKey });
       const chat = genAI.chats.create({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash", // Default fallback model
         history: history || [],
         config: {
           systemInstruction: systemInstruction,
-          tools: tools ? [{ functionDeclarations: tools }, { googleSearch: {} }] : [{ googleSearch: {} }]
+          tools: tools ? [{ functionDeclarations: tools }] : []
         }
       });
 
@@ -89,7 +113,8 @@ async function startServer() {
       res.json({ text: result.text, functionCalls: result.functionCalls });
     } catch (error: any) {
       console.error("AI Chat Error:", error);
-      res.status(500).json({ error: error.message || "Failed to chat with AI" });
+      const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+      res.status(isInvalidKey ? 400 : 500).json({ error: error.message || "Failed to chat with AI" });
     }
   });
 
@@ -293,6 +318,41 @@ async function startServer() {
     }
   });
 
+  app.post("/api/ai/tts", async (req, res) => {
+    const { text, openaiApiKey, voice = "alloy" } = req.body;
+    console.log("TTS endpoint hit, voice:", voice, "text-len:", text?.length, "hasKey:", !!openaiApiKey);
+    
+    if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!openaiApiKey) return res.status(400).json({ error: "Missing OpenAI API key" });
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openaiApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "tts-1",
+          input: text,
+          voice: voice
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(err);
+      }
+
+      const buffer = await response.arrayBuffer();
+      res.set("Content-Type", "audio/mpeg");
+      res.send(Buffer.from(buffer));
+    } catch (error: any) {
+      console.error("OpenAI TTS Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate speech" });
+    }
+  });
+
   // Notebook APIs
   app.post("/api/notebook/upload", upload.single("file"), async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -381,7 +441,7 @@ async function startServer() {
         const decodedUser = await admin.auth().verifyIdToken(idToken);
         
         const { contactId, message, geminiApiKey, language } = req.body;
-        const apiKeyToUse = geminiApiKey && typeof geminiApiKey === "string" && geminiApiKey.trim().length > 10 ? geminiApiKey.trim() : process.env.GEMINI_API_KEY;
+        const apiKeyToUse = geminiApiKey && typeof geminiApiKey === "string" && geminiApiKey.trim().startsWith("AIza") ? geminiApiKey.trim() : process.env.GEMINI_API_KEY;
         const basePath = contactId ? `contacts/${contactId}` : `users/${decodedUser.uid}`;
         
         const sourcesSnap = await admin.firestore().collection(`${basePath}/notebook_sources`).where("status", "==", "ready").get();
@@ -392,7 +452,7 @@ async function startServer() {
         });
         
         if (!apiKeyToUse) {
-           return res.status(500).json({ error: "No API key configured for Gemini." });
+           return res.status(400).json({ error: "No API key configured for Gemini." });
         }
         const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
         const prompt = `You are an expert sales analyst assisting with this context. Answer the user's query using only the provided context. Cite the specific source files when you reference them. The user's language preference is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.\nContext:\n${contextStr}\n\nUser Query:\n${message}`;
@@ -405,7 +465,8 @@ async function startServer() {
         res.json({ text: response.text });
       } catch (error: any) {
         console.error("Notebook chat error:", error);
-        res.status(500).json({ error: error.message });
+        const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+        res.status(isInvalidKey ? 400 : 500).json({ error: error.message });
       }
   });
 
@@ -418,7 +479,7 @@ async function startServer() {
        const decodedUser = await admin.auth().verifyIdToken(idToken);
        
        const { contactId, geminiApiKey, language } = req.body;
-       const apiKeyToUse = geminiApiKey && typeof geminiApiKey === "string" && geminiApiKey.trim().length > 10 ? geminiApiKey.trim() : process.env.GEMINI_API_KEY;
+       const apiKeyToUse = geminiApiKey && typeof geminiApiKey === "string" && geminiApiKey.trim().startsWith("AIza") ? geminiApiKey.trim() : process.env.GEMINI_API_KEY;
        const basePath = contactId ? `contacts/${contactId}` : `users/${decodedUser.uid}`;
        
        const sourcesSnap = await admin.firestore().collection(`${basePath}/notebook_sources`).where("status", "==", "ready").get();
@@ -429,11 +490,11 @@ async function startServer() {
        });
        
        if (!apiKeyToUse) {
-           return res.status(500).json({ error: "No API key configured for Gemini." });
+           return res.status(400).json({ error: "No API key configured for Gemini." });
        }
        const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
        const response = await ai.models.generateContent({
-           model: "gemini-2.5-flash",
+           model: "gemini-2.0-flash",
            contents: `Based on the following context, write a natural, 2-host conversational dialogue script summarizing this information (Host 1: John, Host 2: Sarah). Provide output strictly as a JSON array of objects with 'speaker' (either "John" or "Sarah") and 'text'. Maximum 6 lines of dialogue total. The audio must be in ${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}. Include appropriate greetings in the selected language.\nContext:\n${contextStr}`,
            config: { responseMimeType: "application/json" }
        });
@@ -479,12 +540,14 @@ async function startServer() {
        res.json({ url: downloadUrl, script });
      } catch (error: any) {
         console.error("Notebook audio overview error:", error);
-        res.status(500).json({ error: error.message });
+        const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+        res.status(isInvalidKey ? 400 : 500).json({ error: error.message });
      }
   });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -498,8 +561,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Boot] Server running successfully on http://0.0.0.0:${PORT}`);
+  });
+  
+  server.on('error', (err) => {
+    console.error('[Boot] Critical server error:', err);
   });
 }
 

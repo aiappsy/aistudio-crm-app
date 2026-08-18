@@ -204,10 +204,10 @@ const translations: Translations = {
   },
   help_pipeline_title: { en: "Pipeline", no: "Salgstrakt", sv: "Försäljningstratt", da: "Salgstragt" },
   help_pipeline_content: {
-    en: "The Pipeline gives you a visual drag-and-drop representation of your sales process. Move leads and deals through stages from initial contact to won or lost. This helps you quickly see where your opportunities are and what actions to take next.",
-    no: "Salgsrøret gir deg en visuell dra-og-slipp-representasjon av salgsprosessen din. Flytt leads og avtaler gjennom stadier fra første kontakt til vunnet eller tapt. Dette hjelper deg raskt å se hvor mulighetene dine er og hvilke handlinger du skal ta neste gang.",
-    sv: "Försäljningstratten ger dig en visuell dra-och-släpp-representation av din försäljningsprocess. Flytta leads och affärer genom stadier från första kontakt till vunnen eller förlorad. Detta hjälper dig att snabbt se var dina möjligheter finns och vilka åtgärder du ska vidta härnäst.",
-    da: "Salgstragten giver dig en visuel træk-og-slip-repræsentation af din salgsproces. Flyt leads og tilbud gennem faser fra indledende kontakt til vundet eller tabt. Dette hjælper dig med hurtigt at se, hvor dine muligheder er, og hvilke handlinger du skal foretage næste."
+    en: "The Pipeline gives you a visual drag-and-drop representation of your sales process. Move leads and deals through stages from initial contact to won or lost. Organize your prospects by Niche/Industry to easily identify your best-performing segments. This helps you quickly see where your opportunities are and what actions to take next.",
+    no: "Salgsrøret gir deg en visuell dra-og-slipp-representasjon av salgsprosessen din. Flytt leads og avtaler gjennom stadier fra første kontakt til vunnet eller tapt. Organiser prospektene dine etter Nisje/Bransje for å enkelt identifisere de segmentene som gjør det best. Dette hjelper deg raskt å se hvor mulighetene dine er og hvilke handlinger du skal ta neste gang.",
+    sv: "Försäljningstratten ger dig en visuell dra-och-släpp-representation av din försäljningsprocess. Flytta leads och affärer genom stadier från första kontakt till vunnen eller förlorad. Organisera dina prospekt efter Nisch/Bransch för att enkelt identifiera dina bäst presterande segment. Detta hjälper dig att snabbt se var dina möjligheter finns och vilka åtgärder du ska vidta härnäst.",
+    da: "Salgstragten giver dig en visuel træk-og-slip-repræsentation af din salgsproces. Flyt leads og tilbud gennem faser fra indledende kontakt til vundet eller tabt. Organiser dine kundeemner efter Niche/Branche for at nemt identificere dine bedst præsterende segmenter. Dette hjælper dig med hurtigt at se, hvor dine muligheder er, og hvilke handlinger du skal foretage næste."
   },
   help_customers_title: { en: "Customers", no: "Kunder", sv: "Kunder", da: "Kunder" },
   help_customers_content: {
@@ -332,6 +332,9 @@ const translations: Translations = {
   // Common
   date: { en: "Date", no: "Dato", sv: "Datum", da: "Dato" },
   please_sign_in: { en: "Please Sign In", no: "Vennligst logg inn", sv: "Vänligen logga in", da: "Venligst log ind" },
+  light_theme: { en: "Light", no: "Lys", sv: "Ljus", da: "Lys" },
+  dark_theme: { en: "Dark", no: "Mørk", sv: "Mörk", da: "Mørk" },
+  system_theme: { en: "System", no: "System", sv: "System", da: "System" },
   
   // Import
   import_customers: { en: "Import Customers", no: "Importer kunder", sv: "Importera kunder", da: "Importer kunder" },
@@ -485,10 +488,10 @@ const translations: Translations = {
   what_is_token: { en: "What is an AI Token?", no: "Hva er et AI-token?", sv: "Vad är en AI-token?", da: "Hvad er en AI-token?" },
   token_explanation: { en: "One token represents one task performed by the AI agent, such as reading an email, generating a response, translating text, or updating a lead. Tokens reset at the beginning of each billing cycle. You can always buy extra tokens if you run out.", no: "Ett token representerer én oppgave utført av AI-assistenten, som å lese en e-post, generere et svar, oversette tekst eller oppdatere en kontakt. Tokens tilbakestilles ved starten av hver faktureringssyklus. Du kan alltid kjøpe ekstra tokens hvis du går tom.", sv: "En token representerar en uppgift utförd av AI-assistenten, som att läsa ett e-postmeddelande, generera ett svar, översätta text eller uppdatera en kontakt. Tokens återställs i början av varje faktureringscykel. Du kan alltid köpa extra tokens om du får slut.", da: "En token repræsenterer én opgave udført af AI-assistenten, såsom at læse en e-mail, generere et svar, oversætte tekst eller opdatere en kontakt. Tokens nulstilles i begyndelsen af hver faktureringscyklus. Du kan altid købe ekstra tokens, hvis du løber tør." },
   token_equals_task: { en: "(1 token = 1 AI task)", no: "(1 token = 1 AI-oppgave)", sv: "(1 token = 1 AI-uppgift)", da: "(1 token = 1 AI-opgave)" },
-  ai_configuration_byok: { en: "AI Configuration (BYOK)", no: "AI-konfigurasjon (BYOK)", sv: "AI-konfiguration (BYOK)", da: "AI-konfiguration (BYOK)" },
+  ai_configuration: { en: "AI Configuration", no: "AI-konfigurasjon", sv: "AI-konfiguration", da: "AI-konfiguration" },
   get_free_gemini_key: { en: "Get a free Gemini API key from Google AI Studio", no: "Få en gratis Gemini API-nøkkel fra Google AI Studio", sv: "Få en gratis Gemini API-nyckel från Google AI Studio", da: "Få en gratis Gemini API-nøgle fra Google AI Studio" },
   dont_have_api_key: { en: "Don't have an API key?", no: "Har du ikke en API-nøkkel?", sv: "Har du ingen API-nyckel?", da: "Har du ikke en API-nøgle?" },
-  ai_config_byok_desc: { en: "Configure your own Gemini API key and select your preferred AI model.", no: "Konfigurer din egen Gemini API-nøkkel og velg din foretrukne AI-modell.", sv: "Konfigurera din egen Gemini API-nyckel och välj din föredragna AI-modell.", da: "Konfigurer din egen Gemini API-nøgle og vælg din foretrukne AI-model." },
+  ai_config_desc: { en: "The system provides a default token-based API key. Optionally, configure your own custom Gemini API key for higher limits.", no: "Systemet bruker en standard basert på tokens. Du kan også konfigurere din egen Gemini API-nøkkel for høyere grenser.", sv: "Systemet använder en standard baserad på tokens. Du kan också konfigurera din egen Gemini API-nyckel för högre gränser.", da: "Systemet bruger en standard baseret på tokens. Du kan også konfigurere din egen Gemini API-nøgle for højere grænser." },
   default_currency: { en: "Default Currency", no: "Standardvaluta", sv: "Standardvaluta", da: "Standardvaluta" },
 
   // Auth checks

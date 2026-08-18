@@ -30,6 +30,7 @@ import {
   Mic,
   MicOff,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
@@ -88,34 +89,140 @@ export default function AIAssistant() {
 
   // Voice mode state
   const { voiceMode, setVoiceMode, isListening, setIsListening } = useVoice();
+  const voiceModeRef = useRef(voiceMode);
+  const isListeningRef = useRef(isListening);
+  
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const handleSendRef = useRef<any>(null);
 
   // Initialize Speech Recognition
   useEffect(() => {
-    if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+    if (typeof window !== "undefined") {
+      if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = false;
+        
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setInput(transcript);
+          if (handleSendRef.current) {
+            handleSendRef.current(transcript);
+          }
+        };
+        recognitionRef.current.onerror = () => setIsListening(false);
+        recognitionRef.current.onend = () => setIsListening(false);
+      }
+      if ("speechSynthesis" in window) {
+        // Force the browser to start fetching voices
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      }
     }
   }, []);
 
   const playTTS = async (text: string) => {
-    if (!text || !voiceMode) return;
+    if (!text || !voiceModeRef.current) return;
     try {
       // Remove URLs, markdown formatting, emojis for better speech synthesis
       const cleanText = text.replace(/__|[*]/g, '').replace(/https?:\/\/[^\s]+/g, '').slice(0, 1000);
       
+      // Try OpenAI TTS first
+      if (settings?.openaiApiKey) {
+        console.log("Trying OpenAI TTS, have key");
+        try {
+          const res = await fetch("/api/ai/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: cleanText,
+              openaiApiKey: settings?.openaiApiKey,
+              voice: settings?.openAiVoice || "alloy"
+            })
+          });
+
+          if (res.ok) {
+            console.log("OpenAI TTS success, playing buffer via AudioContext");
+            const arrayBuffer = await res.arrayBuffer();
+            
+            // Initialize AudioContext if needed
+            if (!audioContextRef.current) {
+              const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+              audioContextRef.current = new AudioContext();
+            }
+            const actx = audioContextRef.current;
+            if (actx.state === "suspended") {
+              await actx.resume();
+            }
+
+            const audioBuffer = await actx.decodeAudioData(arrayBuffer);
+            const source = actx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(actx.destination);
+            
+            source.onended = () => {
+              if (voiceModeRef.current) {
+                 setTimeout(() => {
+                   if (recognitionRef.current && !isListeningRef.current) {
+                     try {
+                       recognitionRef.current.start();
+                       setIsListening(true);
+                     } catch(e) {}
+                   }
+                 }, 500);
+              }
+            };
+            
+            try {
+              source.start(0);
+              return; // Exits function if play succeeds
+            } catch (playErr) {
+              console.error("Audio play failed (maybe autoplay blocked), falling back:", playErr);
+            }
+          } else {
+             const errText = await res.text();
+             console.error("OpenAI TTS returned not OK status:", errText);
+             
+             // Only display an alert the first time we see this error 
+             if (!window.sessionStorage.getItem("openai_tts_error_shown")) {
+               setMessages((prev) => [
+                 ...prev, 
+                 { role: "assistant", content: `System Error: OpenAI TTS failed (Check API Key / Billing). Falling back to browser voice. Error: ${errText.slice(0, 100)}` }
+               ]);
+               window.sessionStorage.setItem("openai_tts_error_shown", "true");
+             }
+          }
+        } catch (openaiErr: any) {
+          console.error("OpenAI TTS failed, falling back to browser TTS", openaiErr);
+        }
+      } else {
+        console.log("No OpenAI key found in settings, falling back to browser TTS", settings?.openaiApiKey);
+      }
+
+      // Fallback to browser TTS
       if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel(); // Stop any current speech
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        const targetLang = language === "no" ? "no-NO" : language === "sv" ? "sv-SE" : language === "da" ? "da-DK" : "en-US";
+        const targetLang = language === "no" ? "no-NO" : language === "sv" ? "sv-SE" : language === "da" ? "da-DK" : "en-GB";
         utterance.lang = targetLang;
         
         // Try to pick a Google voice or a local native voice
         const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(v => v.lang.startsWith(targetLang.substring(0,2)) && (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Premium")));
+        
+        let preferredVoice = voices.find(v => v.lang.startsWith(targetLang.substring(0,2)) && (v.name.includes("Microsoft") && v.name.includes("Online")));
+        
+        if (!preferredVoice) {
+          preferredVoice = voices.find(v => v.lang.startsWith(targetLang.substring(0,2)) && (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Premium")));
+        }
+
         if (preferredVoice) {
           utterance.voice = preferredVoice;
         }
@@ -123,11 +230,11 @@ export default function AIAssistant() {
         utterance.rate = 1.0;
         
         utterance.onend = () => {
-          if (voiceMode) {
+          if (voiceModeRef.current) {
              // Optional: automatically resume listening after speaking
              // Need a small timeout to avoid capturing the end of the TTS
              setTimeout(() => {
-               if (recognitionRef.current && !isListening) {
+               if (recognitionRef.current && !isListeningRef.current) {
                  try {
                    recognitionRef.current.start();
                    setIsListening(true);
@@ -153,13 +260,6 @@ export default function AIAssistant() {
     } else {
       try {
         recognitionRef.current.lang = language === "no" ? "no-NO" : language === "sv" ? "sv-SE" : language === "da" ? "da-DK" : "en-US";
-        recognitionRef.current.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setInput(transcript);
-          handleSend(transcript);
-        };
-        recognitionRef.current.onerror = () => setIsListening(false);
-        recognitionRef.current.onend = () => setIsListening(false);
         recognitionRef.current.start();
         setIsListening(true);
       } catch (e) {
@@ -168,23 +268,25 @@ export default function AIAssistant() {
     }
   };
 
-  // Use custom key if available, otherwise fallback to default
-  const ai = useMemo(() => {
-    let apiKeyToUse = "";
+  const getApiKeyToUse = () => {
     if (settings?.geminiApiKey && typeof settings.geminiApiKey === "string" && settings.geminiApiKey.trim().length > 10) {
-      apiKeyToUse = settings.geminiApiKey.trim();
+      return settings.geminiApiKey.trim();
     } else if (globalConfig?.systemApis?.geminiApiKey && typeof globalConfig.systemApis.geminiApiKey === "string" && globalConfig.systemApis.geminiApiKey.trim().length > 10) {
-      apiKeyToUse = globalConfig.systemApis.geminiApiKey.trim();
-    } else {
-      apiKeyToUse = getGlobalApiKey();
+      return globalConfig.systemApis.geminiApiKey.trim();
     }
-    return apiKeyToUse ? new GoogleGenAI({ apiKey: apiKeyToUse }) : aiDefault;
+    return getGlobalApiKey();
+  };
+
+  const ai = useMemo(() => {
+    const key = getApiKeyToUse();
+    return key ? new GoogleGenAI({ apiKey: key }) : aiDefault;
   }, [settings?.geminiApiKey, globalConfig?.systemApis?.geminiApiKey]);
 
   const previousOpenState = useRef(false);
 
   const handleSend = useCallback(
     async (overrideMessage?: string, isHiddenQuery: boolean = false) => {
+      const apiKeyToUse = getApiKeyToUse();
       const messageToSend = overrideMessage || input.trim();
       if (!messageToSend || loading) return;
 
@@ -195,63 +297,9 @@ export default function AIAssistant() {
       ]);
       setLoading(true);
 
-      // Token and BYOK Check
-      const hasBYOK = !!settings?.geminiApiKey;
+      // Token and BYOK Check - Not mandatory anymore
       const currentModel = resolveModel(settings?.aiModel);
       const isPremiumModel = !["gemini-2.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"].includes(currentModel);
-      
-      const isEnterprise =
-        settings?.tier === "enterprise" ||
-        userProfile?.role === "super_admin" ||
-        user?.email === "paljuritzen@gmail.com";
-      const availableTokens = userProfile?.aiTokens || 0;
-      const tokenExpiry = userProfile?.aiTokenExpiry?.toDate
-        ? userProfile.aiTokenExpiry.toDate()
-        : new Date(0);
-      const now = new Date();
-      const hasActiveTokenSession = tokenExpiry > now;
-
-      if (isPremiumModel && !hasBYOK) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "⚠️ **Premium Model Selected**\n\nYou have configured the assistant to use a premium AI model (e.g., Gemini 3.1 Pro), which requires you to bring your own API key.\n\nTo continue, please go to **Settings > Integrations** and add your Google AI Studio API Key. Alternatively, switch your model back to the included `Gemini 3.0 Flash` to continue using your standard AI actions.",
-            isSystem: true,
-          },
-        ]);
-        setLoading(false);
-        return;
-      }
-
-      if (!hasBYOK && !isEnterprise) {
-        if (!hasActiveTokenSession) {
-          if (availableTokens > 0) {
-            // Deduct credit and start 1-hour session
-            try {
-              const userRef = doc(db, "users", user.uid);
-              await updateDoc(userRef, {
-                aiTokens: availableTokens - 1,
-                aiTokenExpiry: new Date(now.getTime() + 60 * 60 * 1000), // +1 hour
-              });
-            } catch (e) {
-              console.error("Failed to deduct credit", e);
-            }
-          } else {
-            // Out of credits
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "assistant",
-                content:
-                  "You are out of AI Actions. Please upgrade your plan in the Settings page or provide your own Gemini API key (BYOK) to unlock unlimited usage.",
-              },
-            ]);
-            setLoading(false);
-            return;
-          }
-        }
-      }
 
       const processHistory = () => {
         let filtered = messages.filter((m) => !m.isSystem && m.content);
@@ -277,7 +325,7 @@ export default function AIAssistant() {
         return alternatingFiltered.map((m) => ({
           role: m.role === "user" ? "user" : "model",
           parts: [{ text: m.content }],
-        }));
+        })) as any[];
       };
 
       try {
@@ -290,104 +338,122 @@ Closing Preference: ${brandVoice.closingPreference || 'Best regards,'}
 Prohibited Phrases: ${brandVoice.prohibitedPhrases || 'None'}
 `;
         
-        const systemInstruction = `You are the AIAppsy CRM Agent, an autonomous execution engine for modern business management. You are NOT a passive advisor. You are a DOER.
+        const systemInstruction = `You are the CRM Executive AI Assistant—a proactive business partner, researcher, and lead generation specialist.
 
-CORE PHILOSOPHY: You do not just surface insights or flag risks. You determine the correct course of action and carry it out within the system. You confirm completion and move to the next priority. When a deal stalls, you do not send a reminder email to the rep. You review the communication history, draft a personalized follow-up, schedule it for optimal send time, and notify the rep after the action is taken.
+CORE PERSONALITY:
+- Action-oriented, highly professional, and sales-focused.
+- You do not just answer questions; you proactively suggest strategies to grow the user's business.
+- You speak with clarity, keeping conversational responses concise (under 60 words) and letting your actions (tool calls) do the heavy lifting.
+
+LEAD GENERATION & SCRAPING PROTOCOL:
+1. If the user asks to find leads, prospects, or businesses in a specific area (e.g., "Find cafes in Oslo"), immediately execute 'scrape_google_maps' with the niche and location.
+2. Once business results are returned:
+   - Summarize the find (e.g., "I found 5 cafes in Oslo.").
+   - Proactively suggest: "Shall I crawl their websites to extract email addresses for outreach?"
+3. If approved, call 'extract_emails_from_websites' with the scraped URL list.
+4. When email addresses are extracted:
+   - Rank the leads by rating and availability of contact emails.
+   - Proactively suggest: "Would you like me to import these leads into your CRM Contacts list now?"
+5. If approved, call 'import_leads_to_crm' to write them to the CRM.
+6. Once imported, offer to draft a personalized cold email template or WhatsApp message for the leads.
+
+CRM & BILLING PROTOCOL:
+- You can create invoices, products, quotes, and record payments using their respective tools.
+- When the user asks to invoice someone, explicitly ask if they would like you to generate the invoice and send it to the customer (via email). If they say yes, use \`create_invoice\` and then \`send_email\` to send the invoice and payment link. 
+- When an invoice is created, ask if they want to generate a Stripe payment URL so their customer can pay immediately.
+- If a tool reports missing credentials (e.g. SMTP or Stripe keys):
+  - For SMTP (Gmail) settings, ask the user to provide their Email Address and an App Password directly in the chat, then use 'update_smtp_settings' tool to configure them natively. Use smtp.gmail.com and 587 as defaults for Gmail.
+  - For other keys (Stripe, Twilio), guide the user to the "Integrations" page to set them up.
+
+CRITICAL RULES:
+- If asked to categorize or find leads for a specific niche/industry, always ensure you populate the 'industry' field of the contact data.
+- Always call the tools when appropriate. Do not explain what you are going to do before calling the tool unless necessary.
+- Write to the "contacts" collection (which handles both customers and leads) for all contact-related activities.
+- Always respond in the same language the user addresses you in.
 
 The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.
 
-YOUR CAPABILITIES:
-1. TASK EXECUTION: Create contacts, update deals, send emails, schedule meetings, assign tasks - all autonomously upon request or proactively.
-2. PIPELINE MONITORING: Continuously track deal velocity and engagement. Intervene when deals stall with re-engagement actions.
-3. LEAD SCORING: Apply BANT, MEDDIC, or CHAMP frameworks using real interaction data to rank and prioritize leads automatically.
-4. SMART FORECASTING: Generate revenue forecasts based on historical win rates, deal age distributions, and seasonal patterns.
-5. DATA ENRICHMENT: Merge duplicates, fill missing fields, and enrich records with external data sources without manual effort.
-6. REPORT GENERATION: Produce detailed pipeline, activity, and performance reports on demand or on schedule.
-7. EMAIL DRAFTING: Compose personalized, context-aware emails based on each prospect's communication history and stage. Schedule at optimal send times.
-8. WORKFLOW AUTOMATION: Trigger multi-step workflows based on conditions and events, reducing manual handoffs and delays.
-9. CUSTOMER SUCCESS: Monitor health signals, detect churn risk early, and proactively schedule check-ins and business reviews.
-10. DATA HYGIENE: Continuously audit data quality, merge duplicates, enrich records, and flag inconsistencies.
-
-AUTOPILOT / AUTONOMOUS FLYWHEEL:
+AUTOPILOT:
 This user has Autopilot ${settings?.autopilotEnabled ? "ENABLED" : "DISABLED"}. 
-${settings?.autopilotEnabled ? "You have explicit permission to take non-destructive actions autonomously and aggressively optimize their pipeline. Surface daily summaries instead of asking for permission." : "You must ask for explicit permission before executing workflows or sending communications."}
 
 BUSINESS CONTEXT & BRAND VOICE:
-${brandVoiceStr}
-
-The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : 'English'}). You MUST reply in this language.
-
-BEHAVIORAL RULES:
-- For non-destructive actions (draft email, schedule meeting, create task): Execute immediately, then notify the user with the result.
-- For destructive actions (delete, merge, escalate): Ask for confirmation before executing.
-- Always use the Brand Voice guidelines when drafting communications.
-- Always reference the Context Engine for business-specific knowledge.
-- When you detect a risk or opportunity, act on it. Do not wait to be asked.
-- Provide results as actionable intelligence, not raw data.
-- If multiple actions are needed, execute them in sequence and report the combined outcome.
-- Track every action you take in the audit log.
-
-RESPONSE FORMAT: When executing actions, respond with a structured action card (or concise text):
-[Action Type] - [Status]
-Details: [What was done]
-Next: [Recommended follow-up, if any]
-
-When answering questions, be concise, data-driven, and action-oriented. End every response with a suggested next action the user can take or that you can execute on their behalf.`;
-
-        const chat = ai.chats.create({
-          model: resolveModel(settings?.aiModel),
-          history: processHistory(),
-          config: {
-            tools: [{ functionDeclarations: crmTools }],
-            systemInstruction,
-          },
-        });
-
-        const stream = await chat.sendMessageStream({
-          message: messageToSend,
-        });
+${brandVoiceStr}`;
 
         let fullText = "";
         let hasStartedAssistantMessage = false;
         let collectedFunctionCalls: any[] = [];
-
-        for await (const chunk of stream) {
-          if (chunk.text) {
-            if (!hasStartedAssistantMessage) {
-              setMessages((prev) => [
-                ...prev,
-                { role: "assistant", content: "" },
-              ]);
-              hasStartedAssistantMessage = true;
-            }
-            fullText += chunk.text;
-            const groundingChunks =
-              chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-            const sources = groundingChunks
-              ?.map((c: any) => ({
+        
+        let chat: any;
+        const historyData = processHistory();
+        
+        if (apiKeyToUse) {
+          // Direct client-side SDK if BYOK is provided
+          chat = ai.chats.create({
+            model: resolveModel(settings?.aiModel),
+            history: historyData,
+            config: {
+              tools: [{ functionDeclarations: crmTools }],
+              systemInstruction,
+            },
+          });
+          
+          const stream = await chat.sendMessageStream({ message: messageToSend });
+          for await (const chunk of stream) {
+            if (chunk.text !== undefined && chunk.text !== null) {
+              if (!hasStartedAssistantMessage) {
+                setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+                hasStartedAssistantMessage = true;
+              }
+              fullText += chunk.text;
+              const groundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+              const sources = groundingChunks?.map((c: any) => ({
                 uri: c.web?.uri || c.maps?.uri,
                 title: c.web?.title || c.maps?.title,
-              }))
-              .filter((s: any) => s.uri);
+              })).filter((s: any) => s.uri);
 
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              const lastMessage = newMessages[newMessages.length - 1];
-              if (lastMessage && lastMessage.role === "assistant") {
-                lastMessage.content = fullText;
-                if (sources && sources.length > 0) {
-                  lastMessage.sources = sources;
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage && lastMessage.role === "assistant") {
+                  lastMessage.content = fullText;
+                  if (sources && sources.length > 0) { lastMessage.sources = sources; }
                 }
+                return [...newMessages];
+              });
+            }
+            if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+              collectedFunctionCalls = [...collectedFunctionCalls, ...chunk.functionCalls];
+            } else if (chunk.candidates?.[0]?.content?.parts) {
+              const partCalls = chunk.candidates[0].content.parts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+              if (partCalls.length > 0) {
+                collectedFunctionCalls = [...collectedFunctionCalls, ...partCalls];
               }
-              return [...newMessages];
-            });
+            }
           }
-
-          if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-            collectedFunctionCalls = [
-              ...collectedFunctionCalls,
-              ...chunk.functionCalls,
-            ];
+        } else {
+          // Server-side route
+          const res = await fetch("/api/ai/chat", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({
+               message: messageToSend,
+               history: historyData,
+               systemInstruction,
+               tools: crmTools
+             })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const backendData = await res.json();
+          
+          fullText = backendData.text || "";
+          hasStartedAssistantMessage = true;
+          
+          if (backendData.functionCalls && backendData.functionCalls.length > 0) {
+             collectedFunctionCalls = backendData.functionCalls;
+          }
+          
+          if (fullText) {
+             setMessages((prev) => [...prev, { role: "assistant", content: fullText }]);
           }
         }
         
@@ -423,43 +489,68 @@ When answering questions, be concise, data-driven, and action-oriented. End ever
             });
           }
 
-          // Send tool results back to model (stream the final response too)
-          const finalStream = await chat.sendMessageStream({ message: toolResults as any });
-
           let finalFullText = "";
           let hasStartedFinalMessage = false;
 
-          for await (const chunk of finalStream) {
-            if (chunk.text) {
-              if (!hasStartedFinalMessage) {
-                setMessages((prev) => [
-                  ...prev,
-                  { role: "assistant", content: "" },
-                ]);
-                hasStartedFinalMessage = true;
-              }
-              finalFullText += chunk.text;
-              const groundingChunks =
-                chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-              const sources = groundingChunks
-                ?.map((c: any) => ({
-                  uri: c.web?.uri || c.maps?.uri,
-                  title: c.web?.title || c.maps?.title,
-                }))
-                .filter((s: any) => s.uri);
-
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastMessage = newMessages[newMessages.length - 1];
-                if (lastMessage && lastMessage.role === "assistant") {
-                  lastMessage.content = finalFullText;
-                  if (sources && sources.length > 0) {
-                    lastMessage.sources = sources;
-                  }
+          if (apiKeyToUse && chat) {
+            // Send tool results back to model (stream the final response too)
+            const finalStream = await chat.sendMessageStream({ message: toolResults as any });
+            
+            for await (const chunk of finalStream) {
+              if (chunk.text !== undefined && chunk.text !== null) {
+                if (!hasStartedFinalMessage) {
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: "" },
+                  ]);
+                  hasStartedFinalMessage = true;
                 }
-                return [...newMessages];
-              });
+                finalFullText += chunk.text;
+                const groundingChunks =
+                  chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+                const sources = groundingChunks
+                  ?.map((c: any) => ({
+                    uri: c.web?.uri || c.maps?.uri,
+                    title: c.web?.title || c.maps?.title,
+                  }))
+                  .filter((s: any) => s.uri);
+
+                setMessages((prev) => {
+                  const newMessages = [...prev];
+                  const lastMessage = newMessages[newMessages.length - 1];
+                  if (lastMessage && lastMessage.role === "assistant") {
+                    lastMessage.content = finalFullText;
+                    if (sources && sources.length > 0) {
+                      lastMessage.sources = sources;
+                    }
+                  }
+                  return [...newMessages];
+                });
+              }
             }
+          } else {
+             // Backend fallback
+             historyData.push({ role: "user", parts: [{ text: messageToSend }] });
+             historyData.push({ role: "model", parts: collectedFunctionCalls.map((fc: any) => ({ functionCall: fc })) });
+             
+             const res = await fetch("/api/ai/chat", {
+               method: "POST",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({
+                 message: toolResults, // Send tool result back to backend as the next user message to continue chat
+                 history: historyData,
+                 systemInstruction,
+                 tools: crmTools
+               })
+             });
+             if (!res.ok) throw new Error(await res.text());
+             const finalBackendData = await res.json();
+             finalFullText = finalBackendData.text || "Action complete.";
+             hasStartedFinalMessage = true;
+             setMessages((prev) => [
+               ...prev,
+               { role: "assistant", content: finalFullText },
+             ]);
           }
           if (!hasStartedFinalMessage) {
             finalFullText = "I have completed the requested actions.";
@@ -499,6 +590,10 @@ When answering questions, be concise, data-driven, and action-oriented. End ever
     },
     [ai, input, loading, messages, settings?.aiModel, user],
   );
+  
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -552,6 +647,7 @@ When answering questions, be concise, data-driven, and action-oriented. End ever
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
+      <audio ref={audioPlayerRef} className="hidden" />
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -572,11 +668,44 @@ When answering questions, be concise, data-driven, and action-oriented. End ever
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setVoiceMode(!voiceMode)}
+                    onClick={() => {
+                      const newMode = !voiceMode;
+                      console.log("Toggling voice mode to:", newMode);
+                      setVoiceMode(newMode);
+                      if (newMode) {
+                        // Unlock browser TTS
+                        if ("speechSynthesis" in window) {
+                          console.log("Unlocking SpeechSynthesis");
+                          const utterance = new SpeechSynthesisUtterance("");
+                          window.speechSynthesis.speak(utterance);
+                        }
+                        // Unlock AudioContext for OpenAI TTS
+                        try {
+                           if (!audioContextRef.current) {
+                             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                             audioContextRef.current = new AudioContext();
+                           }
+                           if (audioContextRef.current.state === "suspended") {
+                             audioContextRef.current.resume();
+                           }
+                           
+                           // Also unlock audio player ref if needed
+                           if (audioPlayerRef.current) {
+                             console.log("Unlocking audioPlayerRef");
+                             audioPlayerRef.current.src = "data:audio/mp3;base64,//MkxAAAAA";
+                             audioPlayerRef.current.play().catch((e)=>{
+                               console.log("Unlock audioPlayerRef play failed:", e);
+                             });
+                           }
+                        } catch(e) {
+                          console.error("Unlock error:", e);
+                        }
+                      }
+                    }}
                     className={cn("h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10", voiceMode && "bg-primary-foreground/20")}
                     title={voiceMode ? "Voice Mode On" : "Voice Mode Off"}
                   >
-                    <Volume2 className={cn("h-4 w-4", !voiceMode && "opacity-50 line-through")} />
+                    {voiceMode ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4 opacity-50" />}
                   </Button>
                   <Button
                     variant="ghost"

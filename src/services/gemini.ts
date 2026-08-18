@@ -39,6 +39,59 @@ export const crmTools: FunctionDeclaration[] = [
     }
   },
   {
+    name: "scrape_google_maps",
+    description: "Searches Google Maps for business listings in a specific location.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: { type: Type.STRING, description: "The type of business or niche to search for (e.g., 'Dentist', 'Plumber')." },
+        location: { type: Type.STRING, description: "The city or zip code to search in (e.g., 'Oslo', 'Austin, TX')." }
+      },
+      required: ["query", "location"]
+    }
+  },
+  {
+    name: "extract_emails_from_websites",
+    description: "Scrapes a list of business websites to find public contact email addresses.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        websites: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "An array of business website URLs (e.g., ['http://site1.com', 'https://site2.no'])."
+        }
+      },
+      required: ["websites"]
+    }
+  },
+  {
+    name: "import_leads_to_crm",
+    description: "Imports a list of scraped local business leads into the CRM contacts database.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        leads: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              company: { type: Type.STRING, description: "Name of the business." },
+              name: { type: Type.STRING, description: "Contact person name or default office name." },
+              email: { type: Type.STRING, description: "The email address found for the business." },
+              phone: { type: Type.STRING, description: "Business phone number." },
+              address: { type: Type.STRING, description: "Physical address." },
+              industry: { type: Type.STRING, description: "Niche or industry of the business." },
+              rating: { type: Type.NUMBER, description: "Google Maps rating (e.g., 4.5)." }
+            },
+            required: ["company", "name", "email"]
+          }
+        }
+      },
+      required: ["leads"]
+    }
+  },
+  {
     name: "create_customer",
     description: "Create a new customer or lead in the CRM",
     parameters: {
@@ -47,7 +100,8 @@ export const crmTools: FunctionDeclaration[] = [
         name: { type: Type.STRING, description: "Full name of the customer" },
         company: { type: Type.STRING, description: "Company name" },
         email: { type: Type.STRING, description: "Email address" },
-        phone: { type: Type.STRING, description: "Phone number" },
+        phone: { type: Type.STRING, description: "Phone number (optional)" },
+        industry: { type: Type.STRING, description: "Industry or Niche (e.g., Healthcare, Retail) (optional)" },
         status: { type: Type.STRING, enum: ["Active", "Lead", "Inactive"] }
       },
       required: ["name", "email", "status"]
@@ -251,6 +305,20 @@ export const crmTools: FunctionDeclaration[] = [
         timeframe: { type: Type.STRING, description: "The period to analyze (e.g., 'this_month', 'last_quarter')." }
       }
     }
+  },
+  {
+    name: "update_smtp_settings",
+    description: "Configures or updates the user's SMTP/Gmail settings for sending emails. Required when user wants you to set up their Gmail or email.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        smtpHost: { type: Type.STRING, description: "SMTP host address (e.g., smtp.gmail.com)" },
+        smtpPort: { type: Type.STRING, description: "SMTP port (e.g., 587)" },
+        smtpUser: { type: Type.STRING, description: "Email address used for SMTP login/auth" },
+        smtpPass: { type: Type.STRING, description: "App password or SMTP password" }
+      },
+      required: ["smtpHost", "smtpPort", "smtpUser", "smtpPass"]
+    }
   }
 ];
 
@@ -259,6 +327,8 @@ export async function callManagedAi(options: {
   systemInstruction?: string;
   responseSchema?: any;
   responseMimeType?: string;
+  useWebSearch?: boolean;
+  customApiKey?: string;
 }) {
   const response = await fetch("/api/ai/generate", {
     method: "POST",
@@ -281,19 +351,17 @@ export function resolveModel(model?: string | null): string {
   if (
     model.includes("gemini-3-flash-preview") || 
     model.includes("gemini-2.5-flash") || 
-    model.includes("gemini-2.0-flash") ||
+    model.includes("gemini-2.5-flash") ||
     model.includes("gemini-1.5-flash") ||
     model.includes("gemini-1.5-pro") ||
     model === "default"
   ) {
-    return "gemini-2.5-flash";
+    return "gemini-2.0-flash";
   }
   return model;
 }
 
 export async function analyzeSalesForecast(deals: any[], customApiKey?: string, model?: string) {
-  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
-  
   const prompt = `
         You are the Smart Forecasting Engine. Analyze the following CRM pipeline data and provide a detailed revenue forecast.
         
@@ -307,19 +375,11 @@ export async function analyzeSalesForecast(deals: any[], customApiKey?: string, 
       `;
 
   try {
-    if (apiKeyToUse) {
-      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
-      const response = await ai.models.generateContent({
-        model: resolveModel(model),
-        contents: prompt
-      });
-      return response.text;
-    } else {
-      const response = await callManagedAi({
-        prompt: prompt
-      });
-      return response.text;
-    }
+    const response = await callManagedAi({
+      prompt: prompt,
+      customApiKey
+    });
+    return response.text;
   } catch (error) {
     console.error("Error analyzing sales forecast:", error);
     throw error;
@@ -327,8 +387,6 @@ export async function analyzeSalesForecast(deals: any[], customApiKey?: string, 
 }
 
 export async function getSmartInsights(data: any, customApiKey?: string, model?: string) {
-  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
-  
   const prompt = `
         You are an expert business analyst for Aiappsy CRM. 
         Analyze the following business data and provide 3-4 concise, actionable insights or recommendations.
@@ -360,26 +418,13 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
         };
 
   try {
-    let text;
-    if (apiKeyToUse) {
-      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
-      const response = await ai.models.generateContent({
-        model: resolveModel(model),
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema
-        }
-      });
-      text = response.text;
-    } else {
-      const response = await callManagedAi({
-        prompt: prompt,
-        responseMimeType: "application/json",
-        responseSchema: schema
-      });
-      text = response.text;
-    }
+    const response = await callManagedAi({
+      prompt: prompt,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      customApiKey
+    });
+    const text = response.text;
 
     if (text) {
       return JSON.parse(text);
@@ -408,22 +453,12 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
 }
 
 export async function getDailyBriefing(promptData: string, customApiKey?: string, model?: string) {
-  const apiKeyToUse = customApiKey && typeof customApiKey === "string" && customApiKey.trim().length > 10 ? customApiKey.trim() : null;
-
   try {
-    if (apiKeyToUse) {
-      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
-      const response = await ai.models.generateContent({
-        model: resolveModel(model),
-        contents: promptData
-      });
-      return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
-    } else {
-      const response = await callManagedAi({
-        prompt: promptData
-      });
-      return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
-    }
+    const response = await callManagedAi({
+      prompt: promptData,
+      customApiKey
+    });
+    return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
   } catch (error) {
     console.error("Error generating daily briefing:", error);
     throw error;
@@ -438,8 +473,6 @@ export async function draftOutreach(options: {
   customApiKey?: string;
   model?: string;
 }) {
-  const apiKeyToUse = options.customApiKey && typeof options.customApiKey === "string" && options.customApiKey.trim().length > 10 ? options.customApiKey.trim() : null;
-  
   const prompt = `
         Draft a professional ${options.platform} outreach message for ${options.customerName}.
         Purpose: ${options.purpose}
@@ -458,26 +491,13 @@ export async function draftOutreach(options: {
         };
 
   try {
-    let text;
-    if (apiKeyToUse) {
-      const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
-      const response = await ai.models.generateContent({
-        model: resolveModel(options.model),
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema
-        }
-      });
-      text = response.text;
-    } else {
-      const response = await callManagedAi({
-        prompt: prompt,
-        responseMimeType: "application/json",
-        responseSchema: schema
-      });
-      text = response.text;
-    }
+    const response = await callManagedAi({
+      prompt: prompt,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      customApiKey: options.customApiKey
+    });
+    const text = response.text;
 
     if (text) {
       return JSON.parse(text);

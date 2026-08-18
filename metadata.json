@@ -1,5 +1,6 @@
 {
   "name": "Aiappsy CRM",
   "description": "A modern, open-source ERP/CRM for business management, inspired by IDURAR.",
-  "requestFramePermissions": ["microphone"]
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

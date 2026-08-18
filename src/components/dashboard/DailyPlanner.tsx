@@ -134,7 +134,7 @@ export default function DailyPlanner({ data }: { data: any }) {
       const modelToUse = resolveModel(settings?.aiModel || globalConfig?.aiModel);
 
       // Using the exact tools and context setup similar to main AIAssistant 
-      const processedHistory = [];
+      const processedHistory: any[] = [];
       let isFirst = true;
 
       // Ensure alternating roles by squashing consecutive messages
@@ -167,22 +167,44 @@ export default function DailyPlanner({ data }: { data: any }) {
         }
       }
 
-      const chat = ai.chats.create({
-        model: modelToUse,
-        history: processedHistory,
-        config: {
-          systemInstruction: `You are an expert sales, marketing, and CRM AI assistant embedded directly inside the Aiappsy CRM software. 
+      let response;
+      let chat: any;
+      if (apiKeyToUse) {
+        chat = ai.chats.create({
+          model: modelToUse,
+          history: processedHistory,
+          config: {
+            systemInstruction: `You are an expert sales, marketing, and CRM AI assistant embedded directly inside the Aiappsy CRM software. 
 You are highly skilled in business strategy, sales optimization, and marketing execution. Give expert advice and help the user grow their business.
 The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.
 Here is the context of the user's data:
 Contacts/Deals: ${JSON.stringify(data?.contacts?.slice(0, 50).map((c: any) => ({ name: c.name, status: c.status, type: c.type, nextAction: c.nextAction })))}
 Invoices: ${JSON.stringify(data?.invoices?.slice(0, 10).map((i: any) => ({ total: i.total, status: i.status })))}
 `,
-          tools: [{ functionDeclarations: crmTools }],
-        }
-      });
-
-      let response = await chat.sendMessage({ message: userMessage });
+            tools: [{ functionDeclarations: crmTools }],
+          }
+        });
+        response = await chat.sendMessage({ message: userMessage });
+      } else {
+        const res = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userMessage,
+            history: processedHistory,
+            systemInstruction: `You are an expert sales, marketing, and CRM AI assistant embedded directly inside the Aiappsy CRM software. 
+You are highly skilled in business strategy, sales optimization, and marketing execution. Give expert advice and help the user grow their business.
+The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.
+Here is the context of the user's data:
+Contacts/Deals: ${JSON.stringify(data?.contacts?.slice(0, 50).map((c: any) => ({ name: c.name, status: c.status, type: c.type, nextAction: c.nextAction })))}
+Invoices: ${JSON.stringify(data?.invoices?.slice(0, 10).map((i: any) => ({ total: i.total, status: i.status })))}
+`,
+            tools: crmTools
+          })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        response = await res.json();
+      }
       const { executeToolHelper } = await import("@/services/executeToolHelper");
 
       while (response.functionCalls && response.functionCalls.length > 0) {
@@ -201,7 +223,31 @@ Invoices: ${JSON.stringify(data?.invoices?.slice(0, 10).map((i: any) => ({ total
           });
         }
         setMessages((prev) => prev.filter(m => !m.isSystem));
-        response = await chat.sendMessage({ message: toolResults as any });
+        
+        if (apiKeyToUse && chat) {
+           response = await chat.sendMessage({ message: toolResults as any });
+        } else {
+           processedHistory.push({ role: "user", parts: [{ text: userMessage }] });
+           processedHistory.push({ role: "model", parts: response.functionCalls.map((fc: any) => ({ functionCall: fc })) });
+           const res = await fetch("/api/ai/chat", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({
+               message: toolResults, // pass tool results back
+               history: processedHistory,
+               systemInstruction: `You are an expert sales, marketing, and CRM AI assistant embedded directly inside the Aiappsy CRM software. 
+You are highly skilled in business strategy, sales optimization, and marketing execution. Give expert advice and help the user grow their business.
+The user's current UI language is ${language} (${language === 'no' ? 'Norwegian' : language === 'sv' ? 'Swedish' : language === 'da' ? 'Danish' : 'English'}). You MUST reply in this language.
+Here is the context of the user's data:
+Contacts/Deals: ${JSON.stringify(data?.contacts?.slice(0, 50).map((c: any) => ({ name: c.name, status: c.status, type: c.type, nextAction: c.nextAction })))}
+Invoices: ${JSON.stringify(data?.invoices?.slice(0, 10).map((i: any) => ({ total: i.total, status: i.status })))}
+`,
+               tools: crmTools
+             })
+           });
+           if (!res.ok) throw new Error(await res.text());
+           response = await res.json();
+        }
       }
 
       const responseText = response.text || "I'm not sure how to respond to that.";

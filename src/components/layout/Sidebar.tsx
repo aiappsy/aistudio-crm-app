@@ -56,6 +56,7 @@ export default function Sidebar() {
         stateKey: "crmOpen",
         submenu: [
           { icon: Kanban, label: t("pipeline"), path: "/app/pipeline" },
+          { icon: Sparkles, label: "Lead Generation", path: "/app/leadgen" },
           { icon: Star, label: "Lead Scoring", path: "/app/leads" },
           { icon: Users, label: t("customers") || "Customers", path: "/app/contacts/customers" },
           { icon: Truck, label: t("suppliers") || "Suppliers", path: "/app/contacts/suppliers" },

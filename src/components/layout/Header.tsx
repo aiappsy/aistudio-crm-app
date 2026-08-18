@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useLanguage, Language } from "@/lib/i18n";
 import HelpModal from "@/components/HelpModal";
 import NotificationBell from "@/components/NotificationBell";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useVoice } from "@/lib/VoiceContext";
 import {
   DropdownMenu,
@@ -75,6 +76,8 @@ export default function Header() {
         >
           {voiceMode ? <Mic size={20} /> : <MicOff size={20} className="opacity-50" />}
         </Button>
+
+        <ThemeToggle />
 
         <HelpModal />
 

@@ -131,3 +131,29 @@
     @apply font-sans;
     }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-container, .print-container * {
+    visibility: visible;
+  }
+  .print-hidden, .print-hidden * {
+    display: none !important;
+  }
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent !important;
+  }
+  .printable-area {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 20px !important;
+  }
+}

@@ -1,5 +1,6 @@
-import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, getDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, getDoc, setDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
+import { callManagedAi } from "@/services/gemini";
 
 export const executeToolHelper = async (name: string, args: any, user: any, settings: any, globalConfig: any) => {
   if (!user) return "Error: User not authenticated";
@@ -84,6 +85,100 @@ export const executeToolHelper = async (name: string, args: any, user: any, sett
         });
         return `Successfully scored lead ${args.contactName || args.contactId} using ${framework} framework. Score: ${composite}, Priority: ${priority}.`;
 
+      case "scrape_google_maps": {
+        const { query: searchQuery, location, offset = 0 } = args;
+        const customApiKey = settings?.geminiApiKey || globalConfig?.systemApis?.geminiApiKey || globalConfig?.geminiApiKey;
+        
+        const paginationInstruction = offset > 0 ? `Skip the first ${offset} most prominent results and give me the next batch of 25 businesses.` : `Give me the top 25 most prominent businesses.`;
+        const searchPrompt = `Find 25 real local businesses for "${searchQuery}" located in or near "${location}". 
+${paginationInstruction}
+
+EXTREMELY IMPORTANT: For each business you find, you MUST perform a deep web search of their official website to find:
+1. Their actual contact email address and phone number.
+2. The name and title of a key decision maker (e.g. CEO, Founder, Owner, Head of Operations, Manager).
+
+Return a STRICT JSON object matching this schema: 
+{ "results": [{ "company": "string", "address": "string", "rating": number, "website": "string", "phone": "string", "email": "string", "decision_maker_name": "string", "decision_maker_title": "string" }] }
+Make sure to include real address and rating data. If you cannot find any piece of information after checking their website, leave it as an empty string.`;
+        
+        try {
+          const aiResponse = await callManagedAi({
+            prompt: searchPrompt,
+            systemInstruction: "You are a web search engine assistant. Only output valid JSON.",
+            useWebSearch: true,
+            responseMimeType: "application/json",
+            customApiKey
+          });
+          
+          let parsed;
+          try {
+            const cleanedText = aiResponse.text.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsed = JSON.parse(cleanedText);
+          } catch(e) {
+            parsed = { results: [] };
+          }
+          
+          return JSON.stringify({
+            status: "success",
+            results: parsed.results || [],
+            message: `Successfully scraped business listings for ${searchQuery} in ${location}.`
+          });
+        } catch (e: any) {
+           return JSON.stringify({ status: "error", message: e.message });
+        }
+      }
+
+      case "extract_emails_from_websites": {
+        const sites = args.websites?.join(', ') || "";
+        const customApiKey = settings?.geminiApiKey || globalConfig?.systemApis?.geminiApiKey || globalConfig?.geminiApiKey;
+        const emailSearchPrompt = `Find contact email addresses for the following business websites: ${sites}. 
+Do a web search if necessary to check their contact pages. 
+Return a STRICT JSON object matching this schema: 
+{ "results": [{ "website": "string", "email": "string", "found": boolean }] }
+Make sure to provide the primary contact email if found.`;
+        
+        try {
+          const aiResponse = await callManagedAi({
+            prompt: emailSearchPrompt,
+            systemInstruction: "You are a web search engine assistant. Only output valid JSON.",
+            useWebSearch: true,
+            responseMimeType: "application/json",
+            customApiKey
+          });
+          
+          let parsed;
+          try {
+            const cleanedText = aiResponse.text.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsed = JSON.parse(cleanedText);
+          } catch(e) {
+            parsed = { results: [] };
+          }
+          
+          return JSON.stringify({
+            status: "success",
+            results: parsed.results || [],
+            message: "Successfully extracted emails."
+          });
+        } catch (e: any) {
+           return JSON.stringify({ status: "error", message: e.message });
+        }
+      }
+
+      case "import_leads_to_crm":
+        const imported = [];
+        for (const lead of args.leads) {
+          await addDoc(collection(db, "contacts"), {
+            ...lead,
+            type: "customer",
+            ownerId: user.uid,
+            createdAt: serverTimestamp(),
+            status: "Lead",
+            source: "AI Scraped"
+          });
+          imported.push(lead.company);
+        }
+        return `Successfully imported ${imported.length} scraped leads into Pipeline as Lead: ${imported.join(", ")}`;
+
       case "create_customer":
         await addDoc(collection(db, "contacts"), {
           ...args,
@@ -93,14 +188,16 @@ export const executeToolHelper = async (name: string, args: any, user: any, sett
         });
         return `Successfully created customer: ${args.name}`;
 
-      case "create_invoice":
+      case "create_invoice": {
+        const invNum = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
         await addDoc(collection(db, "invoices"), {
           ...args,
-          invoiceNumber: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
+          invoiceNumber: invNum,
           ownerId: user.uid,
           date: new Date().toISOString(),
         });
-        return `Successfully created invoice for ${args.customerName} for $${args.amount}`;
+        return `Successfully created invoice \${invNum} for \${args.customerName} for $\${args.amount}`;
+      }
 
       case "send_outreach":
         await addDoc(collection(db, "outreach"), {
@@ -110,6 +207,14 @@ export const executeToolHelper = async (name: string, args: any, user: any, sett
           createdAt: serverTimestamp(),
         });
         return `Successfully sent ${args.platform} message to ${args.customerName || args.customerId}`;
+
+      case "update_smtp_settings": {
+        await setDoc(doc(db, "settings", user.uid), {
+          ...args,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        return `Successfully updated SMTP/Gmail settings for ${args.smtpUser}.`;
+      }
 
       case "import_customers":
         const results = [];
