@@ -1,8 +1,96 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
-const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const defaultAi = new GoogleGenAI({ apiKey: typeof process !== 'undefined' ? process?.env?.GEMINI_API_KEY || "" : "" });
 
 export const crmTools: FunctionDeclaration[] = [
+  {
+    name: "score_lead",
+    description: "Score a lead using the active BANT, MEDDIC, or CHAMP framework based on available data.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId: { type: Type.STRING, description: "ID of the contact to score" },
+        contactName: { type: Type.STRING, description: "Name of the contact to score" }
+      },
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "enrich_contact",
+    description: "Enrich a contact with additional data such as company industry, domain, name, phone, etc.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId: { type: Type.STRING, description: "ID of the contact to enrich" }
+      },
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "merge_contacts",
+    description: "Merge two duplicate contacts together.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        contactId1: { type: Type.STRING, description: "ID of the first contact" },
+        contactId2: { type: Type.STRING, description: "ID of the second contact" }
+      },
+      required: ["contactId1", "contactId2"]
+    }
+  },
+  {
+    name: "scrape_google_maps",
+    description: "Searches Google Maps for business listings in a specific location.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: { type: Type.STRING, description: "The type of business or niche to search for (e.g., 'Dentist', 'Plumber')." },
+        location: { type: Type.STRING, description: "The city or zip code to search in (e.g., 'Oslo', 'Austin, TX')." }
+      },
+      required: ["query", "location"]
+    }
+  },
+  {
+    name: "extract_emails_from_websites",
+    description: "Scrapes a list of business websites to find public contact email addresses.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        websites: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "An array of business website URLs (e.g., ['http://site1.com', 'https://site2.no'])."
+        }
+      },
+      required: ["websites"]
+    }
+  },
+  {
+    name: "import_leads_to_crm",
+    description: "Imports a list of scraped local business leads into the CRM contacts database.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        leads: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              company: { type: Type.STRING, description: "Name of the business." },
+              name: { type: Type.STRING, description: "Contact person name or default office name." },
+              email: { type: Type.STRING, description: "The email address found for the business." },
+              phone: { type: Type.STRING, description: "Business phone number." },
+              address: { type: Type.STRING, description: "Physical address." },
+              industry: { type: Type.STRING, description: "Niche or industry of the business." },
+              rating: { type: Type.NUMBER, description: "Google Maps rating (e.g., 4.5)." }
+            },
+            required: ["company", "name", "email"]
+          }
+        }
+      },
+      required: ["leads"]
+    }
+  },
   {
     name: "create_customer",
     description: "Create a new customer or lead in the CRM",
@@ -12,7 +100,8 @@ export const crmTools: FunctionDeclaration[] = [
         name: { type: Type.STRING, description: "Full name of the customer" },
         company: { type: Type.STRING, description: "Company name" },
         email: { type: Type.STRING, description: "Email address" },
-        phone: { type: Type.STRING, description: "Phone number" },
+        phone: { type: Type.STRING, description: "Phone number (optional)" },
+        industry: { type: Type.STRING, description: "Industry or Niche (e.g., Healthcare, Retail) (optional)" },
         status: { type: Type.STRING, enum: ["Active", "Lead", "Inactive"] }
       },
       required: ["name", "email", "status"]
@@ -276,6 +365,8 @@ export async function callManagedAi(options: {
   systemInstruction?: string;
   responseSchema?: any;
   responseMimeType?: string;
+  useWebSearch?: boolean;
+  customApiKey?: string;
 }) {
   const response = await fetch("/api/ai/generate", {
     method: "POST",
@@ -291,21 +382,56 @@ export async function callManagedAi(options: {
   return await response.json();
 }
 
-export async function getSmartInsights(data: any, customApiKey?: string, model?: string) {
-  const ai = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
-  
+export function resolveModel(model?: string | null): string {
+  if (!model) {
+    return "gemini-2.5-flash";
+  }
+  if (
+    model.includes("gemini-3-flash-preview") || 
+    model.includes("gemini-2.5-flash") || 
+    model.includes("gemini-2.5-flash") ||
+    model.includes("gemini-1.5-flash") ||
+    model.includes("gemini-1.5-pro") ||
+    model === "default"
+  ) {
+    return "gemini-2.0-flash";
+  }
+  return model;
+}
+
+export async function analyzeSalesForecast(deals: any[], customApiKey?: string, model?: string) {
+  const prompt = `
+        You are the Smart Forecasting Engine. Analyze the following CRM pipeline data and provide a detailed revenue forecast.
+        
+        Focus on:
+        1. HISTORICAL WIN RATES & DEALS: Project next quarter's revenue using probability and historical deal velocity.
+        2. SEASONAL PATTERNS: Note any fluctuations over time (if apparent in timestamps) and account for typical quarterly cycles.
+        3. BOTTLENECKS: Identify deals stalled or showing velocity drops.
+        4. QUOTA ATTAINMENT: Provide a summary of how the forecasted revenue tracks against an assumed $100,000 monthly quota. Why did the forecast change?
+        
+        Data: ${JSON.stringify(deals)}
+      `;
+
   try {
-    const response = await ai.models.generateContent({
-      model: model || "gemini-3-flash-preview",
-      contents: `
+    const response = await callManagedAi({
+      prompt: prompt,
+      customApiKey
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error analyzing sales forecast:", error);
+    throw error;
+  }
+}
+
+export async function getSmartInsights(data: any, customApiKey?: string, model?: string) {
+  const prompt = `
         You are an expert business analyst for Aiappsy CRM. 
         Analyze the following business data and provide 3-4 concise, actionable insights or recommendations.
         
         Data: ${JSON.stringify(data)}
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+      `;
+  const schema = {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
@@ -327,11 +453,17 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
             },
             required: ["title", "description", "type"]
           }
-        }
-      }
-    });
+        };
 
+  try {
+    const response = await callManagedAi({
+      prompt: prompt,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      customApiKey
+    });
     const text = response.text;
+
     if (text) {
       return JSON.parse(text);
     }
@@ -358,6 +490,19 @@ export async function getSmartInsights(data: any, customApiKey?: string, model?:
   }
 }
 
+export async function getDailyBriefing(promptData: string, customApiKey?: string, model?: string) {
+  try {
+    const response = await callManagedAi({
+      prompt: promptData,
+      customApiKey
+    });
+    return response.text || "Welcome to your day! Review your active deals in the Pipeline to get started.";
+  } catch (error) {
+    console.error("Error generating daily briefing:", error);
+    throw error;
+  }
+}
+
 export async function draftOutreach(options: {
   customerName: string;
   customerContext?: string;
@@ -366,33 +511,32 @@ export async function draftOutreach(options: {
   customApiKey?: string;
   model?: string;
 }) {
-  const ai = options.customApiKey ? new GoogleGenAI({ apiKey: options.customApiKey }) : defaultAi;
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: options.model || "gemini-2.0-flash",
-      contents: `
+  const prompt = `
         Draft a professional ${options.platform} outreach message for ${options.customerName}.
         Purpose: ${options.purpose}
         Context: ${options.customerContext || "No additional context provided."}
         
         If it's an Email, provide a Subject line and a Body.
         If it's WhatsApp, provide only the message body.
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+      `;
+  const schema = {
           type: Type.OBJECT,
           properties: {
             subject: { type: Type.STRING },
             message: { type: Type.STRING }
           },
           required: ["message"]
-        }
-      }
-    });
+        };
 
+  try {
+    const response = await callManagedAi({
+      prompt: prompt,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      customApiKey: options.customApiKey
+    });
     const text = response.text;
+
     if (text) {
       return JSON.parse(text);
     }

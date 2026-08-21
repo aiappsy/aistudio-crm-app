@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +17,19 @@ export default function Auth() {
   const { signIn, signInWithEmail, signUpWithEmail, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
+  const handleNavigatePostAuth = () => {
+    const plan = searchParams.get("plan");
+    if (plan) {
+      // Redirect to settings so they can configure integrations/payment for their plan
+      navigate(`/app/settings?plan=${plan}`);
+    } else {
+      navigate("/app");
+    }
+  };
+
   useEffect(() => {
     if (!authLoading && user) {
-      navigate("/app");
+      handleNavigatePostAuth();
     }
   }, [user, authLoading, navigate]);
 
@@ -34,9 +44,17 @@ export default function Auth() {
     setError(null);
     try {
       await signIn();
-      navigate("/app");
+      handleNavigatePostAuth();
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/operation-not-allowed") {
+        setError("Google sign-in is not enabled. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else if (err.code === "auth/popup-closed-by-user") {
+        setError("Sign-in cancelled. Please try again.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError("Domain not authorized in Firebase. Add this app's URL to Firebase Console > Authentication > Settings > Authorized domains.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -52,9 +70,19 @@ export default function Auth() {
       } else {
         await signUpWithEmail(formData.email, formData.password, formData.name);
       }
-      navigate("/app");
+      handleNavigatePostAuth();
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/operation-not-allowed") {
+        setError("Email/Password sign-in is not enabled. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else if (err.code === "auth/email-already-in-use") {
+        setError("This email is already registered. Please sign in instead.");
+      } else if (err.code === "auth/invalid-credential") {
+        setError("Invalid email or password.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password is too weak. Please use at least 6 characters.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -97,7 +125,7 @@ export default function Auth() {
                         id="name"
                         placeholder="John Doe"
                         className="pl-10"
-                        value={formData.name}
+                        value={formData.name ?? ""}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         required={!isLogin}
                       />
@@ -115,7 +143,7 @@ export default function Auth() {
                     type="email"
                     placeholder="name@example.com"
                     className="pl-10"
-                    value={formData.email}
+                    value={formData.email ?? ""}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
                   />
@@ -131,7 +159,7 @@ export default function Auth() {
                     type="password"
                     placeholder="••••••••"
                     className="pl-10"
-                    value={formData.password}
+                    value={formData.password ?? ""}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
                   />

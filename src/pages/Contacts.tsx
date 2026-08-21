@@ -59,6 +59,7 @@ interface Contact {
   phone: string;
   status: "Active" | "Lead" | "Inactive";
   type: "customer" | "supplier" | "custom";
+  industry?: string;
   lastContact: string;
 }
 
@@ -98,6 +99,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
     phone: "",
     status: "Lead",
     type: type || "customer",
+    industry: "",
   });
 
   const handleOpenAdd = () => {
@@ -109,6 +111,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
       phone: "",
       status: "Lead",
       type: type || "customer",
+      industry: "",
     });
     setIsDialogOpen(true);
   };
@@ -122,6 +125,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
       phone: contact.phone,
       status: contact.status,
       type: contact.type || "customer",
+      industry: contact.industry || "",
     });
     setIsDialogOpen(true);
   };
@@ -166,6 +170,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
           if (header === "company") contact.company = values[index];
           if (header === "email") contact.email = values[index];
           if (header === "phone") contact.phone = values[index];
+          if (header === "industry" || header === "niche") contact.industry = values[index];
           if (header === "status") contact.status = values[index] || "Lead";
           if (header === "type") contact.type = values[index] || type || "customer";
         });
@@ -189,7 +194,8 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
   const filteredContacts = contacts.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase());
+      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.industry || "").toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesType = !type || c.type === type;
     
@@ -262,7 +268,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -284,6 +290,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <TableHead>{t("name")}</TableHead>
                 <TableHead>{t("company")}</TableHead>
                 <TableHead>{t("contact")}</TableHead>
+                <TableHead>{t("industry") || "Industry"}</TableHead>
                 <TableHead>{t("status")}</TableHead>
                 <TableHead>{t("last_contact")}</TableHead>
                 <TableHead className="text-right">{t("actions")}</TableHead>
@@ -303,7 +310,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                       <div className="flex items-center gap-2">
                         {contact.name}
                         {contact.status === "Active" && (
-                          <Sparkles className="h-3 w-3 text-primary animate-pulse" title="AI Insight: High value contact" />
+                          <Sparkles className="h-3 w-3 text-primary animate-pulse" aria-label="AI Insight: High value contact" />
                         )}
                         {new Date().getTime() - new Date(contact.lastContact).getTime() > 30 * 24 * 60 * 60 * 1000 && (
                           <Badge variant="destructive" className="text-[8px] h-4 px-1 uppercase tracking-tighter">{t("churn_risk") || "Churn Risk"}</Badge>
@@ -322,6 +329,15 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                           {contact.phone}
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {contact.industry ? (
+                        <Badge variant="outline" className="text-xs bg-muted/50 rounded-md truncate max-w-[120px]">
+                          {contact.industry}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs italic">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge 
@@ -350,6 +366,10 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                             <MoreHorizontal size={18} />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => window.location.href=`/app/contacts/${contact.id}`}>
+                            <Globe className="mr-2 h-4 w-4" />
+                            View Details
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleOpenEdit(contact)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             {t("edit")}
@@ -388,7 +408,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <Label htmlFor="name">{t("name")}</Label>
                 <Input
                   id="name"
-                  value={formData.name}
+                  value={formData.name ?? ""}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
                 />
@@ -397,7 +417,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <Label htmlFor="company">{t("company")}</Label>
                 <Input
                   id="company"
-                  value={formData.company}
+                  value={formData.company ?? ""}
                   onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                   required
                 />
@@ -407,7 +427,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <Input
                   id="email"
                   type="email"
-                  value={formData.email}
+                  value={formData.email ?? ""}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
                 />
@@ -416,15 +436,24 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
                 <Label htmlFor="phone">{t("phone")}</Label>
                 <Input
                   id="phone"
-                  value={formData.phone}
+                  value={formData.phone ?? ""}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   required
                 />
               </div>
               <div className="grid gap-2">
+                <Label htmlFor="industry">{t("industry") || "Industry/Niche"}</Label>
+                <Input
+                  id="industry"
+                  placeholder="e.g. Healthcare, Tech, Real Estate..."
+                  value={formData.industry ?? ""}
+                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="type">{t("contact_type") || "Contact Type"}</Label>
                 <Select
-                  value={formData.type}
+                  value={formData.type ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, type: value })}
                 >
                   <SelectTrigger>
@@ -440,7 +469,7 @@ export default function Contacts({ type }: { type?: "customer" | "supplier" | "c
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>

@@ -54,16 +54,23 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">5. Your Rights</h2>
-            <p>
-              Depending on your location (such as the EU under GDPR), you may have certain rights regarding your personal data, including the right to access, correct, or delete your information.
+            <h2 className="text-2xl font-semibold mb-4">5. Your Privacy Rights (GDPR)</h2>
+            <p className="mb-4">
+              If you are a resident of the European Economic Area (EEA), you have the right to:
             </p>
+            <ul className="list-disc pl-6 space-y-2 mb-4">
+              <li><strong>Access:</strong> The right to request copies of your personal data. You can export your data anytime from the Settings page.</li>
+              <li><strong>Rectification:</strong> The right to request that we correct any information you believe is inaccurate.</li>
+              <li><strong>Erasure / RTBF (Right to be Forgotten):</strong> The right to request that we erase your personal data under certain conditions. You can permanently delete your account and all associated data from the Settings &gt; Profile page.</li>
+              <li><strong>Restrict Processing:</strong> The right to request that we restrict the processing of your personal data.</li>
+              <li><strong>Data Portability:</strong> The right to request that we transfer the data that we have collected to another organization, or directly to you.</li>
+            </ul>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold mb-4">6. Contact Us</h2>
             <p>
-              If you have any questions about this Privacy Policy, please contact us at privacy@aiappsy.com.
+              If you have any questions about this Privacy Policy, please contact us at <a href="https://wa.me/4740059493" className="text-primary hover:underline">+47 40059493 (WhatsApp)</a>.
             </p>
           </section>
         </div>

@@ -143,7 +143,7 @@ export default function Products() {
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -228,7 +228,7 @@ export default function Products() {
                 <Label htmlFor="name">{t("product_name")}</Label>
                 <Input
                   id="name"
-                  value={formData.name}
+                  value={formData.name ?? ""}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
                 />
@@ -237,7 +237,7 @@ export default function Products() {
                 <Label htmlFor="category">{t("category")}</Label>
                 <Input
                   id="category"
-                  value={formData.category}
+                  value={formData.category ?? ""}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   required
                 />
@@ -245,7 +245,7 @@ export default function Products() {
               <div className="grid gap-2">
                 <Label htmlFor="productType">{t("product_type")}</Label>
                 <Select
-                  value={formData.productType}
+                  value={formData.productType ?? ""}
                   onValueChange={(value: ProductType) => setFormData({ ...formData, productType: value })}
                 >
                   <SelectTrigger>
@@ -265,7 +265,7 @@ export default function Products() {
                   id="price"
                   type="number"
                   step="0.01"
-                  value={formData.price}
+                  value={formData.price ?? ""}
                   onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
                   required
                 />
@@ -274,7 +274,7 @@ export default function Products() {
                 <Label htmlFor="stock">{t("stock_level")}</Label>
                 <Input
                   id="stock"
-                  value={formData.stock}
+                  value={formData.stock ?? ""}
                   onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                   placeholder="e.g. 50, Unlimited, N/A"
                   required
@@ -283,7 +283,7 @@ export default function Products() {
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>
@@ -299,7 +299,7 @@ export default function Products() {
                 <Label htmlFor="description">{t("description")}</Label>
                 <Textarea
                   id="description"
-                  value={formData.description}
+                  value={formData.description ?? ""}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
                 />

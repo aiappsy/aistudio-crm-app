@@ -35,7 +35,6 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
   const [collapsed, setCollapsed] = useState(false);
-  const [contactsOpen, setContactsOpen] = useState(true);
   const location = useLocation();
 
   const handleLogout = async () => {
@@ -45,11 +44,13 @@ export default function Sidebar() {
 
   const menuItems = useMemo(() => {
     const items = [
-      { icon: LayoutDashboard, label: t("dashboard"), path: "/app" },
+      { icon: LayoutDashboard, label: t("home") || "Home", path: "/app" },
+      { icon: Sparkles, label: "Intelligence Hub", path: "/app/notebook" },
       { 
         icon: Users, 
-        label: t("contacts"), 
-        path: "/app/contacts",
+        label: t("crm_leads") || "CRM & Leads", 
+        path: "/app/crm",
+        stateKey: "crmOpen",
         submenu: [
           { icon: UserCircle, label: t("customers") || "Customers", path: "/app/contacts/customers" },
           { icon: Truck, label: t("suppliers") || "Suppliers", path: "/app/contacts/suppliers" },
@@ -58,23 +59,34 @@ export default function Sidebar() {
           { icon: Globe, label: "Lead Forms", path: "/app/contacts/forms" },
         ]
       },
-      { icon: Kanban, label: t("pipeline"), path: "/app/pipeline" },
-      { icon: FileSignature, label: t("quotes"), path: "/app/quotes" },
-      { icon: FileText, label: t("invoices"), path: "/app/invoices" },
-      { icon: Package, label: t("products"), path: "/app/products" },
-      { icon: CreditCard, label: t("payments"), path: "/app/payments" },
-      { icon: Send, label: t("outreach"), path: "/app/outreach" },
       { icon: BarChart3, label: t("reports"), path: "/app/reports" },
-      { icon: Puzzle, label: "Integrations", path: "/app/integrations" },
-      { icon: Settings, label: t("settings"), path: "/app/settings" },
+      {
+        icon: Settings,
+        label: t("system") || "System",
+        path: "/app/system",
+        stateKey: "systemOpen",
+        submenu: [
+          { icon: Puzzle, label: "Integrations", path: "/app/integrations" },
+          { icon: UserCircle, label: t("profile"), path: "/app/profile" },
+          { icon: Settings, label: t("settings"), path: "/app/settings" },
+          ...(userProfile?.role === "super_admin" ? [{ icon: ShieldCheck, label: "Admin", path: "/app/admin" }] : [])
+        ]
+      }
     ];
-
-    if (userProfile?.role === "super_admin") {
-      items.push({ icon: ShieldCheck, label: "Admin", path: "/app/admin" });
-    }
 
     return items;
   }, [t, userProfile?.role]);
+
+  // We need state for these open menus
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
+    crmOpen: true,
+    commerceOpen: false,
+    systemOpen: false
+  });
+
+  const toggleSubmenu = (key: string) => {
+    setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <div 
@@ -93,22 +105,29 @@ export default function Sidebar() {
           variant="ghost" 
           size="icon" 
           onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto"
+          className="ml-auto flex-shrink-0"
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </Button>
       </div>
 
-      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-2 space-y-1 overflow-y-auto w-full">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path || (item.submenu?.some(sub => location.pathname === sub.path));
-          const isSubmenuOpen = item.submenu && contactsOpen && !collapsed;
+          const isSubmenuOpen = item.submenu && openMenus[item.stateKey as string] && !collapsed;
 
           if (item.submenu) {
             return (
               <div key={item.path} className="space-y-1">
                 <button
-                  onClick={() => !collapsed && setContactsOpen(!contactsOpen)}
+                  onClick={() => {
+                    if (collapsed) {
+                      setCollapsed(false);
+                      setOpenMenus(prev => ({ ...prev, [item.stateKey as string]: true }));
+                    } else {
+                      toggleSubmenu(item.stateKey as string);
+                    }
+                  }}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
                     isActive && !isSubmenuOpen
@@ -116,16 +135,16 @@ export default function Sidebar() {
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                 >
-                  <item.icon size={20} />
+                  <item.icon size={20} className="shrink-0" />
                   {!collapsed && (
                     <>
-                      <span className="font-medium flex-1 text-left">{item.label}</span>
-                      <ChevronDown size={14} className={cn("transition-transform", contactsOpen ? "" : "-rotate-90")} />
+                      <span className="font-medium flex-1 text-left truncate">{item.label}</span>
+                      <ChevronDown size={14} className={cn("transition-transform shrink-0", isSubmenuOpen ? "" : "-rotate-90")} />
                     </>
                   )}
                 </button>
                 {isSubmenuOpen && (
-                  <div className="ml-4 pl-4 border-l space-y-1">
+                  <div className="ml-4 pl-4 border-l space-y-1 mt-1">
                     {item.submenu.map((sub) => {
                       const isSubActive = location.pathname === sub.path;
                       return (
@@ -139,8 +158,8 @@ export default function Sidebar() {
                               : "text-muted-foreground hover:text-foreground"
                           )}
                         >
-                          <sub.icon size={16} />
-                          <span>{sub.label}</span>
+                          <sub.icon size={16} className="shrink-0" />
+                          <span className="truncate">{sub.label}</span>
                         </Link>
                       );
                     })}
@@ -161,8 +180,8 @@ export default function Sidebar() {
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               )}
             >
-              <item.icon size={20} />
-              {!collapsed && <span className="font-medium">{item.label}</span>}
+              <item.icon size={20} className="shrink-0" />
+              {!collapsed && <span className="font-medium truncate">{item.label}</span>}
             </Link>
           );
         })}

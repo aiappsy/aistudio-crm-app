@@ -1,160 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'] ||
-          (request.auth.token.email == "paljuritzen@gmail.com" && request.auth.token.email_verified == true));
-    }
-
-    function isSuperAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin' ||
-          (request.auth.token.email == "paljuritzen@gmail.com" && request.auth.token.email_verified == true));
-    }
-
-    function isOrgMember(orgId) {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
-    }
-
-    function isDocOwner() {
-      let data = resource.data;
-      return isAuthenticated() && (
-        request.auth.uid == data.ownerId || 
-        (data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == data.organizationId)
-      );
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-    
-    function isValidContact(data) {
-      return data.keys().hasAll(['name', 'status', 'ownerId', 'type']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             (!('email' in data) || data.email == "" || isValidEmail(data.email)) &&
-             data.status in ['Active', 'Lead', 'Inactive'] &&
-             data.type in ['customer', 'supplier', 'custom'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidInvoice(data) {
-      return data.keys().hasAll(['invoiceNumber', 'customerId', 'amount', 'status', 'ownerId']) &&
-             data.invoiceNumber is string &&
-             data.amount is number && data.amount >= 0 &&
-             data.status in ['Paid', 'Pending', 'Overdue'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidQuote(data) {
-      return data.keys().hasAll(['quoteNumber', 'customerId', 'amount', 'status', 'ownerId']) &&
-             data.amount is number && data.amount >= 0 &&
-             data.status in ['Accepted', 'Pending', 'Expired'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidProduct(data) {
-      return data.keys().hasAll(['name', 'price', 'status', 'ownerId']) &&
-             data.price is number && data.price >= 0 &&
-             data.status in ['Available', 'Out of Stock'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidPayment(data) {
-      return data.keys().hasAll(['invoiceId', 'amount', 'status', 'ownerId']) &&
-             data.amount is number && data.amount >= 0 &&
-             data.status in ['Completed', 'Processing', 'Failed'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role']) &&
-             data.uid == request.auth.uid &&
-             isValidEmail(data.email) &&
-             data.role in ['super_admin', 'admin', 'user'];
-    }
-
-    function isValidOutreach(data) {
-      return data.keys().hasAll(['customerId', 'platform', 'message', 'status', 'ownerId']) &&
-             data.platform in ['Email', 'WhatsApp'] &&
-             data.status in ['Sent', 'Failed'] &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidSettings(data) {
-      return (!('email' in data) || isValidEmail(data.email)) &&
-             (!('vatRegion' in data) || data.vatRegion in ['NO', 'SE', 'DK', 'INT']);
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
-    match /global_config/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
-    }
-
-    match /organizations/{orgId} {
-      allow read: if isAuthenticated() && (isOrgMember(orgId) || isSuperAdmin());
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isOrgMember(orgId) || isSuperAdmin());
-    }
-
-    match /invitations/{invId} {
-      allow read: if isAuthenticated() && (
-        request.auth.token.email == resource.data.email || 
-        isSuperAdmin() ||
-        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
-      );
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        request.auth.token.email == resource.data.email || 
-        isSuperAdmin() ||
-        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
-      );
-      allow delete: if isAuthenticated() && (
-        request.auth.token.email == resource.data.email || 
-        isSuperAdmin() ||
-        (resource.data.organizationId != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == resource.data.organizationId)
-      );
-    }
-
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                      (request.resource.data.role == resource.data.role || 
-                       (request.auth.token.email == "paljuritzen@gmail.com" && request.auth.token.email_verified == true)); // Prevent self-promotion except for owner
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
-
     match /settings/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    match /outreach/{outreachId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidOutreach(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidOutreach(request.resource.data);
-      allow delete: if isDocOwner() || isAdmin();
+    match /organizations/{orgId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
     }
-
+    match /global_config/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /invitations/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /releases/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /dataHygieneLog/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /agentNotifications/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Main data collections
     match /contacts/{contactId} {
       allow read: if isDocOwner() || isAdmin();
       allow create: if (isAuthenticated() && isValidContact(request.resource.data)) ||
@@ -166,39 +42,12 @@ service cloud.firestore {
       allow update: if (isDocOwner() || isAdmin()) && isValidContact(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
     }
-
-    match /invoices/{invoiceId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidInvoice(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidInvoice(request.resource.data);
-      allow delete: if isDocOwner() || isAdmin();
-    }
-
-    match /quotes/{quoteId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidQuote(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidQuote(request.resource.data);
-      allow delete: if isDocOwner() || isAdmin();
-    }
-
-    match /products/{productId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidProduct(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidProduct(request.resource.data);
-      allow delete: if isDocOwner() || isAdmin();
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidPayment(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidPayment(request.resource.data);
-      allow delete: if isDocOwner() || isAdmin();
-    }
-    match /releases/{releaseId} {
-      allow read: if isAuthenticated();
-      allow create: if isSuperAdmin();
-      allow update: if isSuperAdmin();
-      allow delete: if isSuperAdmin();
+    match /{collection}/{document} {
+      allow read, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.ownerId == request.auth.uid 
+                    && request.resource.data.ownerId == request.auth.uid;
     }
   }
 }
+

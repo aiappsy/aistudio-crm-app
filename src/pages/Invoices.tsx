@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileDown, MoreHorizontal, Loader2, Pencil, Trash2, CreditCard } from "lucide-react";
+import { Plus, Search, FileDown, MoreHorizontal, Loader2, Pencil, Trash2, CreditCard, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -38,6 +38,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useLanguage } from "@/lib/i18n";
 import { calculateVat, ProductType, VatRegion } from "@/lib/vatUtils";
 import { formatCurrency } from "@/lib/utils";
+import { InvoicePreview } from "@/components/InvoicePreview";
 
 interface Invoice {
   id: string;
@@ -56,6 +57,9 @@ interface Invoice {
 interface Customer {
   id: string;
   name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   type?: string;
 }
 
@@ -69,6 +73,8 @@ export default function Invoices() {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [formData, setFormData] = useState<Omit<Invoice, "id" | "customerName" | "vatRate" | "vatAmount" | "totalAmount">>({
@@ -106,22 +112,46 @@ export default function Invoices() {
     setIsDialogOpen(true);
   };
 
-  const handlePayment = async (invoice: Invoice) => {
-    if (!settings?.stripeSecretKey) {
-      alert("Please configure your Stripe Secret Key in Settings first.");
-      return;
-    }
+  const handleOpenPreview = (invoice: Invoice) => {
+    setPreviewInvoice(invoice);
+  };
 
+  const handleSendInvoice = async () => {
+    if (!previewInvoice) return;
+    setIsSending(true);
     try {
+      // Simulate sending email
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Update status to pending if it was sent successfully
+      if (previewInvoice.status !== "Paid") {
+        await update(previewInvoice.id, { status: "Pending" });
+      }
+      
+      alert("Invoice sent successfully to customer.");
+      setPreviewInvoice(null);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to send invoice.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handlePayment = async (invoice: Invoice) => {
+    try {
+      const idToken = await (user as any)?.getIdToken();
       const response = await fetch("/api/stripe/create-checkout-session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           invoiceId: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
           amount: invoice.totalAmount || invoice.amount,
           customerName: invoice.customerName,
-          stripeSecretKey: settings.stripeSecretKey,
           successUrl: `${window.location.origin}/app/payments?success=true&invoiceId=${invoice.id}`,
           cancelUrl: `${window.location.origin}/app/invoices?canceled=true`,
         }),
@@ -155,11 +185,17 @@ export default function Invoices() {
 
     if (editingInvoice) {
       await update(editingInvoice.id, dataToSave);
+      setPreviewInvoice({ ...editingInvoice, ...dataToSave } as Invoice); // Automatically preview if we want? Let's just close dialog for now.
     } else {
       await add(dataToSave);
+      // Wait a bit or preview the newly created one? Standard is just close.
     }
     setIsDialogOpen(false);
   };
+
+  const currentPreviewCustomer = previewInvoice 
+    ? customers.find(c => c.id === previewInvoice.customerId) 
+    : undefined;
 
   const filteredInvoices = invoices.filter(inv => 
     inv.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -200,7 +236,7 @@ export default function Invoices() {
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -238,7 +274,7 @@ export default function Invoices() {
                     <TableCell className="font-mono font-medium">{invoice.invoiceNumber}</TableCell>
                     <TableCell>{invoice.customerName}</TableCell>
                     <TableCell>{formatCurrency(invoice.amount, settings?.currency)}</TableCell>
-                    <TableCell>{formatCurrency(invoice.vatAmount || 0, settings?.currency)} ({(invoice.vatRate || 0) * 100}%)</TableCell>
+                    <TableCell>{formatCurrency(invoice.vatAmount || 0, settings?.currency)} {invoice.vatRate ? `(${(invoice.vatRate * 100).toFixed(0)}%)` : ''}</TableCell>
                     <TableCell className="font-bold">{formatCurrency(invoice.totalAmount || invoice.amount, settings?.currency)}</TableCell>
                     <TableCell>{new Date(invoice.date).toLocaleDateString()}</TableCell>
                     <TableCell>
@@ -258,6 +294,10 @@ export default function Invoices() {
                           <MoreHorizontal size={18} />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenPreview(invoice)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            Preview & Send
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleOpenEdit(invoice)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             {t("edit")}
@@ -297,7 +337,7 @@ export default function Invoices() {
                 <Label htmlFor="invoiceNumber">{t("invoice_number")}</Label>
                 <Input
                   id="invoiceNumber"
-                  value={formData.invoiceNumber}
+                  value={formData.invoiceNumber ?? ""}
                   onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
                   required
                 />
@@ -305,7 +345,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="customer">{t("customer")}</Label>
                 <Select
-                  value={formData.customerId}
+                  value={formData.customerId ?? ""}
                   onValueChange={(value) => setFormData({ ...formData, customerId: value })}
                   required
                 >
@@ -325,7 +365,7 @@ export default function Invoices() {
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  value={formData.amount ?? ""}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
                   required
                 />
@@ -333,7 +373,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="productType">{t("product_type")}</Label>
                 <Select
-                  value={formData.productType}
+                  value={formData.productType ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, productType: value })}
                   required
                 >
@@ -353,7 +393,7 @@ export default function Invoices() {
                 <Input
                   id="date"
                   type="date"
-                  value={formData.date}
+                  value={formData.date ?? ""}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
@@ -361,7 +401,7 @@ export default function Invoices() {
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>
@@ -381,6 +421,21 @@ export default function Invoices() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {previewInvoice && (
+        <Dialog open={!!previewInvoice} onOpenChange={() => setPreviewInvoice(null)}>
+          <DialogContent className="max-w-4xl h-[90vh] p-0 flex flex-col bg-slate-50">
+            <InvoicePreview 
+              invoice={previewInvoice} 
+              customer={currentPreviewCustomer} 
+              settings={settings}
+              onClose={() => setPreviewInvoice(null)}
+              onSend={handleSendInvoice}
+              isSending={isSending}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

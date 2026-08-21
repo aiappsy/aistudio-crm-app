@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useFirestoreCollection, useFirestoreDoc } from "@/lib/useFirestore";
+import { useFirestoreQuery, useFirestoreDoc } from "@/lib/useFirestore";
+import { where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { X, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import {
 
 export default function ReleaseBanner() {
   const { user } = useAuth();
-  const { data: releases } = useFirestoreCollection<any>("releases");
+  const { data: releases } = useFirestoreQuery<any>("releases", []);
   const { data: userProfile } = useFirestoreDoc<any>("users", user?.uid);
   const [dismissedReleases, setDismissedReleases] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);

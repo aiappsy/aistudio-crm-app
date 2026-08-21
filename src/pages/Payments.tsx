@@ -175,7 +175,7 @@ export default function Payments() {
           <Input
             placeholder={t("search_placeholder")}
             className="pl-9"
-            value={searchQuery}
+            value={searchQuery ?? ""}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
@@ -263,7 +263,7 @@ export default function Payments() {
               <div className="grid gap-2">
                 <Label htmlFor="invoice">{t("invoices")}</Label>
                 <Select
-                  value={formData.invoiceId}
+                  value={formData.invoiceId ?? ""}
                   onValueChange={(value) => {
                     const inv = invoices.find(i => i.id === value);
                     setFormData({ ...formData, invoiceId: value, amount: inv?.amount || 0 });
@@ -286,7 +286,7 @@ export default function Payments() {
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  value={formData.amount ?? ""}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
                   required
                 />
@@ -294,7 +294,7 @@ export default function Payments() {
               <div className="grid gap-2">
                 <Label htmlFor="method">{t("payment_method")}</Label>
                 <Select
-                  value={formData.method}
+                  value={formData.method ?? ""}
                   onValueChange={(value) => setFormData({ ...formData, method: value })}
                 >
                   <SelectTrigger>
@@ -313,7 +313,7 @@ export default function Payments() {
                 <Input
                   id="date"
                   type="date"
-                  value={formData.date}
+                  value={formData.date ?? ""}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
@@ -321,7 +321,7 @@ export default function Payments() {
               <div className="grid gap-2">
                 <Label htmlFor="status">{t("status")}</Label>
                 <Select
-                  value={formData.status}
+                  value={formData.status ?? ""}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>

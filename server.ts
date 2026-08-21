@@ -1,65 +1,110 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
+import * as admin from "firebase-admin";
+import multer from "multer";
+import * as pdfParseLib from "pdf-parse";
+const pdfParse = (pdfParseLib as any).default || pdfParseLib;
+import * as googleTTS from "google-tts-api";
+import * as cheerio from "cheerio";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Removed __filename and __dirname as they are unused and break CJS bundle
+
+// Initialize Firebase Admin globally
+const serviceAccount = process.env.GOOGLE_APPLICATION_CREDENTIALS 
+  ? undefined 
+  : undefined; 
+
+try {
+  admin.initializeApp({
+    storageBucket: "bizmaster-abfed.firebasestorage.app"
+  });
+} catch (error) {
+  console.log("Firebase Admin already initialized or failed to initialize:", error);
+}
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  console.log(`[Boot] Starting server on PORT ${PORT}...`);
+  console.log(`[Boot] NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[Boot] isCloudRun: ${!!process.env.K_SERVICE || !!process.env.K_REVISION}`);
+  console.log(`[Boot] cwd: ${process.cwd()}`);
+
   app.use(express.json());
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
   // API Routes
   app.post("/api/ai/generate", async (req, res) => {
-    const { prompt, systemInstruction, responseSchema, responseMimeType } = req.body;
+    const { prompt, systemInstruction, responseSchema, responseMimeType, useWebSearch, customApiKey } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    const apiKey = (customApiKey && typeof customApiKey === "string" && customApiKey.trim().startsWith("AIza")) 
+        ? customApiKey.trim() 
+        : process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server or provided by client." });
     }
 
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const genAI = new GoogleGenAI({ apiKey });
+      const configObj: any = {
+        systemInstruction: systemInstruction,
+        responseMimeType: responseMimeType || "text/plain",
+      };
+      if (responseSchema) {
+        configObj.responseSchema = responseSchema;
+      }
+      if (useWebSearch) {
+        configObj.tools = [{ googleSearch: {} }];
+        delete configObj.responseMimeType; // Google Search grounding does not support JSON responseMimeType
+        if (responseSchema) delete configObj.responseSchema;
+      }
+
       const response = await genAI.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash", // Default fallback model
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: responseMimeType || "text/plain",
-          responseSchema: responseSchema
-        }
+        config: configObj
       });
 
       res.json({ text: response.text });
     } catch (error: any) {
       console.error("AI Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate content" });
+      const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+      res.status(isInvalidKey ? 400 : 500).json({ error: error.message || "Failed to generate content" });
     }
   });
 
   app.post("/api/ai/chat", async (req, res) => {
-    const { message, history, systemInstruction, tools } = req.body;
+    const { message, history, systemInstruction, tools, customApiKey } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    const apiKey = (customApiKey && typeof customApiKey === "string" && customApiKey.trim().startsWith("AIza")) 
+        ? customApiKey.trim() 
+        : process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(400).json({ error: "GEMINI_API_KEY is not configured on the server or provided by client." });
     }
 
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const genAI = new GoogleGenAI({ apiKey });
       const chat = genAI.chats.create({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash", // Default fallback model
         history: history || [],
         config: {
           systemInstruction: systemInstruction,
-          tools: tools ? [{ functionDeclarations: tools }, { googleSearch: {} }] : [{ googleSearch: {} }]
+          tools: tools ? [{ functionDeclarations: tools }] : []
         }
       });
 
@@ -68,7 +113,8 @@ async function startServer() {
       res.json({ text: result.text, functionCalls: result.functionCalls });
     } catch (error: any) {
       console.error("AI Chat Error:", error);
-      res.status(500).json({ error: error.message || "Failed to chat with AI" });
+      const isInvalidKey = error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID");
+      res.status(isInvalidKey ? 400 : 500).json({ error: error.message || "Failed to chat with AI" });
     }
   });
 
@@ -79,18 +125,31 @@ async function startServer() {
       amount, 
       currency = "usd", 
       customerName, 
-      stripeSecretKey,
       successUrl,
       cancelUrl
     } = req.body;
 
-    const secretKey = stripeSecretKey || process.env.STRIPE_SECRET_KEY;
-
-    if (!secretKey) {
-      return res.status(400).json({ error: "Stripe Secret Key is not configured." });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing or invalid authorization header." });
     }
 
     try {
+      const idToken = authHeader.split("Bearer ")[1];
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const uid = decodedToken.uid;
+
+      // Fetch settings from Firestore
+      const settingsDocRef = admin.firestore().collection("settings").doc(uid);
+      const settingsDoc = await settingsDocRef.get();
+      
+      const settingsData = settingsDoc.data();
+      const secretKey = settingsData?.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
+
+      if (!secretKey) {
+        return res.status(400).json({ error: "Stripe Secret Key is not configured." });
+      }
+
       const stripe = new Stripe(secretKey);
       
       const session = await stripe.checkout.sessions.create({
@@ -585,6 +644,7 @@ http://localhost:3000/app/contacts/customers
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -598,8 +658,12 @@ http://localhost:3000/app/contacts/customers
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Boot] Server running successfully on http://0.0.0.0:${PORT}`);
+  });
+  
+  server.on('error', (err) => {
+    console.error('[Boot] Critical server error:', err);
   });
 }
 
