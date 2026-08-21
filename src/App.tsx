@@ -22,6 +22,9 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import Contacts from "./pages/Contacts";
 import Pipeline from "./pages/Pipeline";
+import LeadFinder from "./pages/LeadFinder";
+import LeadFormBuilder from "./pages/LeadFormBuilder";
+import PublicLeadForm from "./pages/PublicLeadForm";
 import AIAssistant from "./components/AIAssistant";
 import ReleaseBanner from "./components/ReleaseBanner";
 import { ScrollArea } from "./components/ui/scroll-area";
@@ -51,6 +54,7 @@ export default function App() {
               <Route path="/auth" element={<Auth />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/forms/:ownerId" element={<PublicLeadForm />} />
               <Route path="/app/*" element={
                 <ProtectedRoute>
                   <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -67,6 +71,8 @@ export default function App() {
                               <Route path="/contacts/customers" element={<Contacts type="customer" />} />
                               <Route path="/contacts/suppliers" element={<Contacts type="supplier" />} />
                               <Route path="/contacts/custom" element={<Contacts type="custom" />} />
+                              <Route path="/contacts/finder" element={<LeadFinder />} />
+                              <Route path="/contacts/forms" element={<LeadFormBuilder />} />
                               <Route path="/pipeline" element={<Pipeline />} />
                               <Route path="/quotes" element={<Quotes />} />
                               <Route path="/invoices" element={<Invoices />} />

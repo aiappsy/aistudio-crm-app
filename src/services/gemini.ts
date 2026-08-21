@@ -216,6 +216,58 @@ export const crmTools: FunctionDeclaration[] = [
         timeframe: { type: Type.STRING, description: "The period to analyze (e.g., 'this_month', 'last_quarter')." }
       }
     }
+  },
+  {
+    name: "scrape_google_maps",
+    description: "Search Google Maps for local business listings by niche and location.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: { type: Type.STRING, description: "The type of business/niche to find (e.g., 'Dentists', 'Lawyers')." },
+        location: { type: Type.STRING, description: "The city or area to search in (e.g., 'Oslo', 'New York')." }
+      },
+      required: ["query", "location"]
+    }
+  },
+  {
+    name: "extract_emails_from_websites",
+    description: "Crawl a list of business websites to find public email addresses.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        websites: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "List of website URLs to scan."
+        }
+      },
+      required: ["websites"]
+    }
+  },
+  {
+    name: "import_leads_to_crm",
+    description: "Import a list of scraped local business leads into the CRM contacts database.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        leads: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              company: { type: Type.STRING, description: "Business name" },
+              name: { type: Type.STRING, description: "Name (defaults to Office/Owner)" },
+              email: { type: Type.STRING, description: "Public email address found" },
+              phone: { type: Type.STRING, description: "Business phone number" },
+              address: { type: Type.STRING, description: "Physical address" },
+              rating: { type: Type.NUMBER, description: "Google rating (1-5)" }
+            },
+            required: ["company", "name", "email"]
+          }
+        }
+      },
+      required: ["leads"]
+    }
   }
 ];
 

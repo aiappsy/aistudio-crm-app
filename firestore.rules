@@ -157,7 +157,12 @@ service cloud.firestore {
 
     match /contacts/{contactId} {
       allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidContact(request.resource.data);
+      allow create: if (isAuthenticated() && isValidContact(request.resource.data)) ||
+                      (request.resource.data.status == 'Lead' &&
+                       request.resource.data.type == 'customer' &&
+                       request.resource.data.keys().hasAll(['name', 'email', 'ownerId', 'status', 'type']) &&
+                       request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+                       isValidEmail(request.resource.data.email));
       allow update: if (isDocOwner() || isAdmin()) && isValidContact(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
     }

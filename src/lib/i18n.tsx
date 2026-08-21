@@ -416,7 +416,6 @@ const translations: Translations = {
   pro_description: { en: "For growing teams.", no: "For team i vekst.", sv: "För växande team.", da: "Til voksende teams." },
   enterprise_description: { en: "For large organizations.", no: "For større selskaper.", sv: "För större företag.", da: "Til større virksomheder." },
   upgrade_now: { en: "Upgrade Now", no: "Oppgrader nå", sv: "Uppgradera nu", da: "Opgrader nu" },
-  contact_sales: { en: "Contact Sales", no: "Kontakt salg", sv: "Kontakta sälj", da: "Kontakt salg" },
   full_name: { en: "Full Name", no: "Fullt navn", sv: "Fullständigt namn", da: "Fulde navn" },
 };
 

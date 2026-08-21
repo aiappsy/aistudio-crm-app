@@ -192,6 +192,87 @@ export default function Integrations() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Lead Capturing card */}
+        <Card className="border-indigo-500/20 shadow-lg shadow-indigo-500/5">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
+                <Globe className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <CardTitle>Inbound Lead Capturing</CardTitle>
+                <CardDescription>Capture leads from external websites, forms, or automation tools.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-5 space-y-4">
+              <h4 className="font-semibold text-indigo-700 flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Integration Instructions
+              </h4>
+              <ul className="text-sm space-y-3 text-muted-foreground">
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-700 flex items-center justify-center text-[10px] font-bold">1</span>
+                  <span>
+                    Use our visual <strong>Form Builder</strong> to generate fully responsive, embeddable forms.
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-700 flex items-center justify-center text-[10px] font-bold">2</span>
+                  <span>
+                    For custom integrations (Zapier, Webflow, Make), send a <code>POST</code> request to the webhook URL below.
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Your Public Webhook URL</label>
+                <div className="flex gap-2">
+                  <Input 
+                    readOnly
+                    value={`${window.location.origin}/api/leads/webhook?ownerId=${user?.uid || "YOUR_OWNER_ID"}`}
+                    className="bg-muted font-mono text-xs" 
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/leads/webhook?ownerId=${user?.uid || "YOUR_OWNER_ID"}`);
+                      alert("Webhook URL copied to clipboard!");
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Example cURL Payload</label>
+                <pre className="p-3.5 bg-slate-950 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800">
+{`curl -X POST "${window.location.origin}/api/leads/webhook?ownerId=${user?.uid || "YOUR_OWNER_ID"}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Alice Smith",
+    "email": "alice@example.com",
+    "phone": "+47 900 00 000",
+    "company": "Acme Corp",
+    "notes": "Interested in premium CRM features."
+  }'`}
+                </pre>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center">
+                <span className="text-xs text-muted-foreground">Captured leads automatically appear in your Contacts pipeline with the "Lead" status.</span>
+                <a href="/app/contacts/forms" className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:underline">
+                  Open Form Builder &rarr;
+                </a>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

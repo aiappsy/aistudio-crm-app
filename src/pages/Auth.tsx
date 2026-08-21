@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/AuthContext";
+import { useLanguage } from "@/lib/i18n";
 import { Loader2, Mail, Lock, User, Chrome } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function Auth() {
+  const { t } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

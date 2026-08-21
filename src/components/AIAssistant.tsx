@@ -59,7 +59,7 @@ export default function AIAssistant() {
     try {
       switch (name) {
         case "create_customer":
-          await addDoc(collection(db, "customers"), {
+          await addDoc(collection(db, "contacts"), {
             ...args,
             ownerId: user.uid,
             createdAt: serverTimestamp()
@@ -87,7 +87,7 @@ export default function AIAssistant() {
         case "import_customers":
           const results = [];
           for (const customer of args.customers) {
-            await addDoc(collection(db, "customers"), {
+            await addDoc(collection(db, "contacts"), {
               ...customer,
               ownerId: user.uid,
               createdAt: serverTimestamp()
@@ -95,6 +95,46 @@ export default function AIAssistant() {
             results.push(customer.name);
           }
           return `Successfully imported ${results.length} customers: ${results.join(", ")}`;
+
+        case "scrape_google_maps":
+          const mapsResponse = await fetch("/api/leads/scrape-maps", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: args.query, location: args.location, apiKey: settings?.googleMapsApiKey })
+          });
+          const mapsData = await mapsResponse.json();
+          if (!mapsResponse.ok) throw new Error(mapsData.error || "Failed to search places");
+          return JSON.stringify(mapsData.leads);
+
+        case "extract_emails_from_websites":
+          const extractResponse = await fetch("/api/leads/extract-emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ websites: args.websites })
+          });
+          const extractData = await extractResponse.json();
+          if (!extractResponse.ok) throw new Error(extractData.error || "Failed to crawl websites");
+          return JSON.stringify(extractData.results);
+
+        case "import_leads_to_crm":
+          const importResults = [];
+          for (const lead of args.leads) {
+            await addDoc(collection(db, "contacts"), {
+              name: lead.name || `${lead.company} Office`,
+              company: lead.company,
+              email: lead.email,
+              phone: lead.phone || "",
+              address: lead.address || "",
+              rating: lead.rating || 0,
+              status: "Lead",
+              type: "customer",
+              ownerId: user.uid,
+              createdAt: serverTimestamp(),
+              lastContact: new Date().toISOString()
+            });
+            importResults.push(lead.company);
+          }
+          return `Successfully imported ${importResults.length} leads: ${importResults.join(", ")}`;
 
         case "create_quote":
           await addDoc(collection(db, "quotes"), {
@@ -143,7 +183,8 @@ export default function AIAssistant() {
           return `Successfully updated settings: ${Object.keys(args).join(", ")}`;
 
         case "generate_report_summary":
-          const collectionName = args.category.toLowerCase();
+          let collectionName = args.category.toLowerCase();
+          if (collectionName === "customers") collectionName = "contacts";
           const q = query(collection(db, collectionName), where("ownerId", "==", user.uid));
           const snapshot = await getDocs(q);
           const count = snapshot.size;
@@ -291,26 +332,32 @@ export default function AIAssistant() {
         config: {
           tools: [{ functionDeclarations: crmTools }, { googleSearch: {} }],
           toolConfig: { includeServerSideToolInvocations: true },
-          systemInstruction: `You are the Aiappsy Executive AI Assistant—a high-level business analyst and proactive partner for Aiappsy CRM users.
+           systemInstruction: `You are the Aiappsy Executive AI Assistant—a high-level business analyst and proactive partner for Aiappsy CRM users.
 
 CORE IDENTITY:
-You are ambitious, professional, and action-oriented. You don't just answer questions; you help users grow their business by managing leads, automating outreach, and providing "WOW" moments of intelligence.
+You are ambitious, professional, and action-oriented. You don't just answer questions; you help users grow their business by managing leads, finding new prospects, automating outreach, and providing "WOW" moments of intelligence.
 
 SPECIFIC KNOWLEDGE:
-1. The "WOW" Demo Flow: Capture (Nexus Editor) -> Intelligence (Analysis) -> Action (Drafting) -> Revenue (Stripe).
-2. BYOK (Bring Your Own Key): If users ask how to set up AI or provide a key, tell them to go to the Settings page in this app, paste their Gemini API key from AI Studio, and select their preferred model. There is NO Azure or AWS KMS setup involved in this app. Provide this link to get the key: https://aistudio.google.com/app/apikey.
+1. The "WOW" Demo Flow: Capture (Nexus Editor / Maps Scraper) -> Intelligence (Analysis & Email Extraction) -> Action (Drafting Outreach) -> Revenue (Stripe).
+2. BYOK (Bring Your Own Key): If users ask how to set up AI or provide a key, tell them to go to the Settings page, paste their Gemini API key from AI Studio (https://aistudio.google.com/app/apikey), and select their preferred model.
 
 CAPABILITIES:
-- Execute tasks: Create/Update/Delete customers, invoices, quotes, products, and payments.
+- Lead Generation: Find local business leads on Google Maps (scrape_google_maps) and crawl their websites for public email addresses (extract_emails_from_websites), then bulk import them to the CRM (import_leads_to_crm).
+- Execute CRM tasks: Create/Update/Delete contacts, invoices, quotes, products, and payments.
 - Outreach: Draft and send Email/WhatsApp messages.
 - Analysis: Generate summary reports and use Google Search for market research.
-- Settings: If a tool requires missing settings/configuration, clearly advise the user exactly where in the app to configure it. Include external links if needed.
+
+LEAD GENERATION CRAWLER PROTOCOL:
+1. When a user asks to find leads/prospects (e.g. "Find dentists in Oslo"), call 'scrape_google_maps' first.
+2. After maps results load, tell the user you found them, and proactively ask: "Would you like me to crawl their websites to find email addresses?"
+3. If yes, call 'extract_emails_from_websites'.
+4. After emails are found, list them, and ask: "Shall I import these leads into your CRM contacts database?"
+5. If yes, call 'import_leads_to_crm'.
 
 GUIDELINES:
 - When a user asks to do something, use the appropriate tool immediately.
-- If CSV/Text data is provided, parse and use the import_customers tool.
 - Keep responses extremely concise (under 50 words) and direct.
-- Be proactive: "I've drafted a proposal for this lead. Shall I send it via WhatsApp now?"
+- Be proactive: "I've found 5 new prospects and extracted their emails. Shall I import them to your pipeline?"
 - Always respond in the language the user speaks to you.`
         }
       });

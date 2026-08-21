@@ -18,7 +18,9 @@ import {
   Kanban,
   UserCircle,
   Truck,
-  PlusCircle
+  PlusCircle,
+  Search,
+  Globe
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -49,9 +51,11 @@ export default function Sidebar() {
         label: t("contacts"), 
         path: "/app/contacts",
         submenu: [
-          { icon: UserCircle, label: t("customers"), path: "/app/contacts/customers" },
-          { icon: Truck, label: t("suppliers"), path: "/app/contacts/suppliers" },
-          { icon: PlusCircle, label: t("custom_types"), path: "/app/contacts/custom" },
+          { icon: UserCircle, label: t("customers") || "Customers", path: "/app/contacts/customers" },
+          { icon: Truck, label: t("suppliers") || "Suppliers", path: "/app/contacts/suppliers" },
+          { icon: PlusCircle, label: t("custom_types") || "Custom Types", path: "/app/contacts/custom" },
+          { icon: Search, label: "Lead Finder", path: "/app/contacts/finder" },
+          { icon: Globe, label: "Lead Forms", path: "/app/contacts/forms" },
         ]
       },
       { icon: Kanban, label: t("pipeline"), path: "/app/pipeline" },
